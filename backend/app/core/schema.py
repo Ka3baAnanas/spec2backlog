@@ -1,9 +1,8 @@
 """Small, safe schema guard for local SQLite databases.
 
-The project historically shipped without Alembic migrations. During development a
-DB file can therefore survive a code change and be missing newly added tables or
-columns. For SQLite only, we back up that stale file and let create_all() build a
-fresh schema. PostgreSQL deployments are left alone.
+The project does not ship migrations yet. During development a DB file can survive
+a code change and be missing newly added tables or columns. For SQLite only we back
+up that stale file and let create_all() build a fresh schema. PostgreSQL is left alone.
 """
 import logging
 import sqlite3
@@ -14,21 +13,34 @@ from sqlalchemy.engine import make_url
 logger = logging.getLogger(__name__)
 
 EXPECTED_COLUMNS: dict[str, set[str]] = {
-    "nodes": {
-        "id", "project_id", "parent_id", "number", "title", "text", "level",
-        "position", "is_leaf", "is_global", "is_front_matter", "lineage",
+    "projects": {
+        "id", "name", "status", "error", "checklist", "context_approved",
+        "created_at", "updated_at",
+    },
+    "documents": {"id", "project_id", "version", "filename", "path", "stats", "warnings",
+                  "checklist", "created_at"},
+    "sections": {
+        "id", "project_id", "document_id", "parent_id", "number", "title", "text", "level",
+        "position", "is_leaf", "role", "lineage",
+    },
+    "links": {"id", "project_id", "source_id", "target_id", "kind", "score", "reason", "enabled"},
+    "glossary_terms": {"id", "project_id", "term", "definition", "kind", "source_section_id"},
+    "context_packs": {"id", "project_id", "section_id", "prompt", "data", "created_at"},
+    "backlog_items": {
+        "id", "project_id", "key", "kind", "parent_item_id", "source_section_id",
+        "source_sections", "title", "body", "status", "confidence", "questions",
+    },
+    "questions": {"id", "project_id", "section_id", "text", "answer", "status", "created_at"},
+    "generation_traces": {
+        "id", "project_id", "section_id", "prompt", "response_json", "links",
+        "global_context_ids", "duration_ms", "attempts", "status", "error", "items_created",
     },
     "run_events": {"id", "project_id", "ts", "stage", "type", "message", "data"},
-    "generation_traces": {
-        "id", "project_id", "node_id", "prompt", "response_json", "neighbours",
-        "global_context_ids", "duration_ms", "attempts", "status", "error",
-        "items_created",
-    },
+    "review_events": {"id", "project_id", "item_id", "action", "before", "after", "by", "at"},
 }
 
 
 def sqlite_database_path(database_url: str) -> Path | None:
-    """Return the on-disk SQLite path, or None for non-SQLite / in-memory DBs."""
     url = make_url(database_url)
     if url.get_backend_name() != "sqlite":
         return None

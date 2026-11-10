@@ -2,9 +2,9 @@ import sqlite3
 
 from sqlalchemy import create_engine, inspect
 
-from app import models  # noqa: F401 - register tables on Base.metadata
 from app.core.db import Base
 from app.core.schema import prepare_sqlite_schema
+from app.domain import models  # noqa: F401 - register tables on Base.metadata
 
 
 def _sqlite_url(path):
@@ -14,9 +14,7 @@ def _sqlite_url(path):
 def test_old_sqlite_schema_is_backed_up_and_recreated(tmp_path):
     db_path = tmp_path / "dev.db"
     connection = sqlite3.connect(db_path)
-    connection.execute(
-        "CREATE TABLE nodes (id TEXT PRIMARY KEY, project_id TEXT, title TEXT)"
-    )
+    connection.execute("CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT)")
     connection.commit()
     connection.close()
 
@@ -30,9 +28,14 @@ def test_old_sqlite_schema_is_backed_up_and_recreated(tmp_path):
     try:
         Base.metadata.create_all(engine)
         inspector = inspect(engine)
-        assert {"run_events", "generation_traces"}.issubset(set(inspector.get_table_names()))
-        columns = {column["name"] for column in inspector.get_columns("nodes")}
-        assert {"is_front_matter", "is_global", "lineage"}.issubset(columns)
+        assert {
+            "projects", "documents", "sections", "links", "glossary_terms", "context_packs",
+            "backlog_items", "questions", "generation_traces", "run_events", "review_events",
+        }.issubset(set(inspector.get_table_names()))
+        columns = {column["name"] for column in inspector.get_columns("sections")}
+        assert {"role", "lineage", "is_leaf"}.issubset(columns)
+        item_columns = {column["name"] for column in inspector.get_columns("backlog_items")}
+        assert {"key", "confidence", "source_sections"}.issubset(item_columns)
     finally:
         engine.dispose()
 
