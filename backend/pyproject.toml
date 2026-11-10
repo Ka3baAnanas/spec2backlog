@@ -1,0 +1,19 @@
+[project]
+name = "spec2backlog"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115", "uvicorn[standard]", "pydantic>=2.7", "pydantic-settings",
+  "sqlalchemy>=2.0", "psycopg[binary]>=3.2", "alembic", "python-multipart",
+  "python-docx", "pdfplumber", "chromadb-client", "httpx", "openpyxl", "tiktoken",
+]
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "httpx"]
+ocr = ["docling"]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"app/api/routes.py" = ["B008"]  # FastAPI Depends/Form/File live in argument defaults
