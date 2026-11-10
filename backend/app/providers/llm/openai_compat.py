@@ -16,7 +16,9 @@ class OpenAICompatLLM:
         self.key = api_key if api_key is not None else settings.groq_api_key
         self.model = model or settings.llm_model
 
-    def complete_json(self, system: str, user: str, schema: dict) -> dict:
+    def complete_json(
+        self, system: str, user: str, schema: dict, on_event=None
+    ) -> dict:
         headers = {"Content-Type": "application/json"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"

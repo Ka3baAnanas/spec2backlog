@@ -33,14 +33,16 @@ run automatically by upload (`prepare`).
 | Backend | Python 3.11+, FastAPI, Pydantic v2 | typed, auto OpenAPI docs, best AI ecosystem |
 | DB | SQLite for dev/tests, PostgreSQL in docker-compose (SQLAlchemy 2) | single source of truth: text, tree, links, items, history |
 | Vectors | in-memory store for dev/tests, Chroma when `CHROMA_HOST` is set | simple; used only as a similarity index |
-| LLM | Gemini / Groq / OpenAI-compatible / fake | `.env` switch, offline demo without keys |
-| Embeddings | Gemini / fake | `.env` switch, offline demo without keys |
+| LLM | Gemini 3.5 Flash-Lite (free tier) / Groq / OpenAI-compatible / fake | `.env` switch, offline demo without keys |
+| Embeddings | Gemini Embedding 2 (free tier) / fake | `.env` switch, offline demo without keys |
 | Extraction | python-docx, pdfplumber, OCR stub (Docling) | OCR only when a PDF has no text layer |
 | Frontend | React + Vite + TypeScript, framer-motion, d3-force, TanStack Query | 5-step wizard, backlog review drawer, event-driven motion |
 | Infra | Docker Compose | one command for the whole platform |
 
 Provider selection lives in `app/providers/factory.py`. With no API key the app falls back to the fake
-providers and flags it in `/api/v1/settings/providers` and in pipeline events.
+providers and flags it in `/api/v1/settings/providers` and in pipeline events. Gemini free-tier calls
+are throttled (default ~15 RPM) and 429/5xx responses are retried with exponential backoff; waits and
+retries are written to the run-event journal (`app/providers/gemini_http.py`).
 
 Confidentiality: free-tier Gemini may use prompts to improve Google products; for real client data use a
 paid/Azure tier or self-hosted models.

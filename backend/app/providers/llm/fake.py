@@ -22,7 +22,7 @@ def _section_text(user: str) -> str:
 class FakeLLM:
     name = "fake"
 
-    def complete_json(self, system: str, user: str, schema: dict) -> dict:
+    def complete_json(self, system: str, user: str, schema: dict, on_event=None) -> dict:
         title = _section_title(user)
         text = _section_text(user)
         excerpt = text.strip().splitlines()[0][:180] if text.strip() else title

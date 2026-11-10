@@ -9,6 +9,7 @@ from app.core.db import SessionLocal
 from app.domain.models import GenerationTrace
 from app.main import app
 from app.modules.generation import service as generation_service
+from app.modules.generation.schema import validate_output
 from app.modules.knowledge.retriever import explicit_refs
 from app.modules.structure.tree import is_front_matter_title
 from app.providers.llm.fake import FakeLLM
@@ -289,3 +290,25 @@ def test_refs_and_front_matter_heuristics():
     assert is_front_matter_title("Table des matières")
     assert is_front_matter_title("Historique des versions")
     assert not is_front_matter_title("Validation des données")
+
+
+def test_output_schema_coerces_real_llm_shapes():
+    output = validate_output(
+        {
+            "epic": "Password reset",
+            "stories": [
+                {
+                    "title": "Reset a password",
+                    "acceptance_criteria": "Given a user, when they reset, then it works",
+                }
+            ],
+            "tests": [{"title": "Reset test", "steps": [{"step": "Open the reset page"}]}],
+            "questions": [{"question": "What is the token lifetime?"}],
+        }
+    )
+    assert output["epic"]["title"] == "Password reset"
+    assert output["stories"][0]["acceptance_criteria"] == [
+        "Given a user, when they reset, then it works"
+    ]
+    assert output["tests"][0]["steps"] == ["Open the reset page"]
+    assert output["questions"] == ["What is the token lifetime?"]

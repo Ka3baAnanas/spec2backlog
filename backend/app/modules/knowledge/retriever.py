@@ -54,7 +54,13 @@ def retrieve_links(project_id: str, sections: list, *, emit_events: bool = True)
         emit(project_id, "knowledge", "stage_start",
              f"Linking {total} section(s) with hybrid retrieval", {"sections": total})
 
-    vectors = embed_texts([f"{section.title}\n{section.text}" for section in candidates])
+    def on_event(kind: str, message: str, data: dict) -> None:
+        if emit_events:
+            emit(project_id, "knowledge", kind, message, data)
+
+    vectors = embed_texts(
+        [f"{section.title}\n{section.text}" for section in candidates], on_event=on_event
+    )
     store = get_store()
     store.upsert(project_id, [section.id for section in candidates], vectors)
 

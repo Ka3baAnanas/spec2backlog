@@ -8,7 +8,9 @@ class FakeEmbedder:
     name = "fake"
     dimensions = 256
 
-    def embed(self, texts: list[str], task: str = "document") -> list[list[float]]:
+    def embed(
+        self, texts: list[str], task: str = "document", on_event=None
+    ) -> list[list[float]]:
         out = []
         for text in texts:
             vector = [0.0] * self.dimensions

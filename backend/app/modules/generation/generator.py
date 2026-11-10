@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.core.events import emit
 from app.domain.models import GenerationTrace, Project, Section
 from app.modules.context.builder import build_prompt
 from app.modules.generation.prompts import load_template
@@ -47,6 +48,15 @@ def generate_for_section(
     system = load_template("system")
     schema = output_json_schema()
 
+    def on_event(kind: str, message: str, data: dict) -> None:
+        emit(
+            project.id,
+            "generation",
+            kind,
+            message,
+            {"section_id": section.id, "section_number": section.number, **data},
+        )
+
     started = time.perf_counter()
     attempts = 0
     output = None
@@ -55,7 +65,12 @@ def generate_for_section(
     while attempts < 2:  # one automatic retry
         attempts += 1
         try:
-            raw = llm.complete_json(system, prompt, schema)
+            try:
+                raw = llm.complete_json(system, prompt, schema, on_event=on_event)
+            except TypeError as exc:
+                if "on_event" not in str(exc):
+                    raise
+                raw = llm.complete_json(system, prompt, schema)
             output = validate_output(raw)
             status = "retried" if attempts > 1 else "ok"
             break

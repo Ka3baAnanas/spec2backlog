@@ -1,6 +1,9 @@
-import httpx
-
 from app.core.config import settings
+from app.providers.gemini_http import post_with_retry
+
+# gemini-embedding-2 uses task instructions in the text and ignores taskType.
+# gemini-embedding-001 uses the taskType field.
+EMBEDDING_2_PREFIX = "gemini-embedding-2"
 
 
 class GeminiEmbedder:
@@ -9,25 +12,33 @@ class GeminiEmbedder:
 
     def __init__(self):
         self.key = settings.gemini_api_key
-        self.model = settings.embedding_model
+        self.model = settings.embedding_model or "gemini-embedding-2"
 
-    def embed(self, texts: list[str], task: str = "document") -> list[list[float]]:
+    def _request(self, text: str, task: str) -> dict:
+        if self.model.startswith(EMBEDDING_2_PREFIX):
+            if task == "query":
+                formatted = f"task: search result | query: {text}"
+            else:
+                formatted = f"title: none | text: {text}"
+            return {
+                "model": f"models/{self.model}",
+                "content": {"parts": [{"text": formatted}]},
+            }
         task_type = "RETRIEVAL_DOCUMENT" if task == "document" else "RETRIEVAL_QUERY"
-        body = {
-            "requests": [
-                {
-                    "model": f"models/{self.model}",
-                    "taskType": task_type,
-                    "content": {"parts": [{"text": text}]},
-                }
-                for text in texts
-            ]
+        return {
+            "model": f"models/{self.model}",
+            "taskType": task_type,
+            "content": {"parts": [{"text": text}]},
         }
-        r = httpx.post(
+
+    def embed(self, texts: list[str], task: str = "document", on_event=None) -> list[list[float]]:
+        body = {"requests": [self._request(text, task) for text in texts]}
+        response = post_with_retry(
+            f"gemini-embeddings:{self.model}",
             self.URL.format(model=self.model),
             params={"key": self.key},
             json=body,
-            timeout=60,
+            timeout=120,
+            on_event=on_event,
         )
-        r.raise_for_status()
-        return [entry["values"] for entry in r.json()["embeddings"]]
+        return [entry["values"] for entry in response.json()["embeddings"]]
