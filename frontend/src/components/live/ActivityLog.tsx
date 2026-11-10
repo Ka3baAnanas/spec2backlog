@@ -17,9 +17,11 @@ import {
 
 const STAGE_LABELS: Record<string, string> = {
   ingestion: "Ingestion",
-  tree: "Tree",
-  graph: "Graph",
+  structure: "Structure",
+  knowledge: "Knowledge",
+  context: "Context",
   generation: "Generation",
+  review: "Review",
   export: "Export",
 };
 

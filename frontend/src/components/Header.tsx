@@ -1,34 +1,11 @@
 ﻿import { motion, useReducedMotion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
 
-type NavItem = { label: string; to: string; active: boolean };
-
 export function Header() {
   const location = useLocation();
   const reduced = useReducedMotion();
   const segments = location.pathname.split("/").filter(Boolean);
   const projectId = segments[0] === "p" ? segments[1] : undefined;
-  const isReview = Boolean(projectId && segments[2] === "review");
-  const isLive = Boolean(projectId && segments[2] === "live");
-
-  const navItems: NavItem[] = [{ label: "Projects", to: "/", active: !projectId }];
-  if (projectId) {
-    navItems.push({
-      label: "Workspace",
-      to: `/p/${projectId}`,
-      active: !isReview && !isLive,
-    });
-    navItems.push({
-      label: "Live",
-      to: `/p/${projectId}/live`,
-      active: isLive,
-    });
-    navItems.push({
-      label: "Review",
-      to: `/p/${projectId}/review`,
-      active: isReview,
-    });
-  }
 
   return (
     <header className="site-header">
@@ -42,23 +19,34 @@ export function Header() {
         </Link>
 
         <nav className="main-nav" aria-label="Primary">
-          {navItems.map((item) => (
+          <Link
+            to="/"
+            className={`nav-link ${!projectId ? "is-active" : ""}`.trim()}
+            aria-current={!projectId ? "page" : undefined}
+          >
+            Projects
+            {!projectId && (
+              <motion.span
+                layoutId="nav-underline"
+                className="nav-link__underline"
+                transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 36 }}
+              />
+            )}
+          </Link>
+          {projectId && (
             <Link
-              key={item.label}
-              to={item.to}
-              className={`nav-link ${item.active ? "is-active" : ""}`.trim()}
-              aria-current={item.active ? "page" : undefined}
+              to={`/p/${projectId}`}
+              className="nav-link is-active"
+              aria-current="page"
             >
-              {item.label}
-              {item.active && (
-                <motion.span
-                  layoutId="nav-underline"
-                  className="nav-link__underline"
-                  transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 36 }}
-                />
-              )}
+              Project
+              <motion.span
+                layoutId="nav-underline"
+                className="nav-link__underline"
+                transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 36 }}
+              />
             </Link>
-          ))}
+          )}
         </nav>
 
         <div className="header-right">

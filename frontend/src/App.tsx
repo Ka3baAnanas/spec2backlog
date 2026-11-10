@@ -4,10 +4,8 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import { Header } from "./components/Header";
 import { PageTransition } from "./components/PageTransition";
 import { ToastProvider } from "./components/Toast";
-import Live from "./pages/Live";
 import Project from "./pages/Project";
 import Projects from "./pages/Projects";
-import Review from "./pages/Review";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -25,8 +23,6 @@ function AnimatedRoutes() {
         <Routes location={location}>
           <Route path="/" element={<Projects />} />
           <Route path="/p/:id" element={<Project />} />
-          <Route path="/p/:id/live" element={<Live />} />
-          <Route path="/p/:id/review" element={<Review />} />
         </Routes>
       </PageTransition>
     </AnimatePresence>
@@ -48,9 +44,7 @@ export default function App() {
               <span className="site-footer__beam" aria-hidden="true" />
               <span>Spec2Backlog · EY Cortex AI</span>
             </div>
-            <span>
-              Prototype · Human-in-the-loop business analysis · Data stays in your environment
-            </span>
+            <span>Prototype · Human-in-the-loop business analysis · Data stays in your environment</span>
           </div>
         </footer>
       </ToastProvider>

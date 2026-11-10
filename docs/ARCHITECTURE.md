@@ -36,7 +36,7 @@ run automatically by upload (`prepare`).
 | LLM | Gemini / Groq / OpenAI-compatible / fake | `.env` switch, offline demo without keys |
 | Embeddings | Gemini / fake | `.env` switch, offline demo without keys |
 | Extraction | python-docx, pdfplumber, OCR stub (Docling) | OCR only when a PDF has no text layer |
-| Frontend | React + Vite + TypeScript (rebuilt next) | thin UI over the REST API |
+| Frontend | React + Vite + TypeScript, framer-motion, d3-force, TanStack Query | 5-step wizard, backlog review drawer, event-driven motion |
 | Infra | Docker Compose | one command for the whole platform |
 
 Provider selection lives in `app/providers/factory.py`. With no API key the app falls back to the fake
@@ -84,6 +84,7 @@ paid/Azure tier or self-hosted models.
 | GET | /projects/{id}/backlog | nested epics > stories > tests + stats |
 | PATCH | /items/{id} | approve / edit / reject |
 | POST | /items/{id}/regenerate | regenerate one item with an instruction |
+| GET | /items/{id}/trace | exact prompt + raw model JSON for the item's source section |
 | POST | /projects/{id}/backlog/approve | human checkpoint 2 |
 | GET | /projects/{id}/questions | list questions |
 | PATCH | /questions/{id} | answer a question |

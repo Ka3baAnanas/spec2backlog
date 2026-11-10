@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.projects import get_project
 from app.core.db import get_db
-from app.domain.models import BacklogItem
+from app.domain.models import BacklogItem, GenerationTrace
 from app.domain.schemas import BacklogItemOut, ItemPatch, ItemRegenerate
 from app.modules.review.service import approve_backlog, patch_item, regenerate_item
 
@@ -89,6 +89,34 @@ def regenerate(item_id: str, payload: ItemRegenerate, db: Session = Depends(get_
         raise HTTPException(404, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(502, f"regeneration failed: {exc}") from exc
+
+
+@router.get("/items/{item_id}/trace")
+def item_trace(item_id: str, db: Session = Depends(get_db)):
+    item = _get_item(db, item_id)
+    trace = db.scalars(
+        select(GenerationTrace)
+        .where(
+            GenerationTrace.project_id == item.project_id,
+            GenerationTrace.section_id == item.source_section_id,
+        )
+        .order_by(GenerationTrace.id.desc())
+    ).first()
+    if not trace:
+        raise HTTPException(404, "no generation trace for this item's source section")
+    return {
+        "item_id": item.id,
+        "section_id": trace.section_id,
+        "prompt": trace.prompt,
+        "response_json": trace.response_json,
+        "links": trace.links or [],
+        "global_context_ids": trace.global_context_ids or [],
+        "duration_ms": trace.duration_ms,
+        "attempts": trace.attempts,
+        "status": trace.status,
+        "error": trace.error,
+        "items_created": trace.items_created or {},
+    }
 
 
 @router.post("/projects/{project_id}/backlog/approve")

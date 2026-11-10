@@ -1,4 +1,11 @@
-export type RunStage = "ingestion" | "tree" | "graph" | "generation" | "export";
+export type RunStage =
+  | "ingestion"
+  | "structure"
+  | "knowledge"
+  | "context"
+  | "generation"
+  | "review"
+  | "export";
 
 export type RunEventType =
   | "stage_start"
@@ -9,7 +16,8 @@ export type RunEventType =
   | "leaf_failed"
   | "link_found"
   | "warning"
-  | "error";
+  | "error"
+  | "info";
 
 export type RunEvent = {
   id: number;
@@ -31,41 +39,21 @@ export const RUN_EVENT_TYPES: RunEventType[] = [
   "link_found",
   "warning",
   "error",
+  "info",
 ];
-
-export type TraceNeighbour = {
-  node_id: string;
-  number: string;
-  title: string;
-  score: number;
-  kind: string;
-};
-
-export type GenerationTrace = {
-  id: number;
-  project_id: string;
-  node_id: string;
-  prompt: string;
-  response_json: unknown;
-  neighbours: TraceNeighbour[];
-  global_context_ids: string[];
-  duration_ms: number;
-  attempts: number;
-  status: "ok" | "failed" | "retried";
-  error: string | null;
-  items_created: { epics: number; stories: number; tests: number; questions: number };
-};
 
 const B = "/api/v1";
 
-const json = async (response: Response) => {
+async function json<T>(response: Response): Promise<T> {
   if (!response.ok) throw new Error((await response.text()) || `Request failed (${response.status})`);
-  return response.json();
-};
+  return response.json() as Promise<T>;
+}
 
 export function fetchEvents(projectId: string, after = 0, limit = 1000): Promise<RunEvent[]> {
   const query = new URLSearchParams({ after: String(after), limit: String(limit) });
-  return fetch(`${B}/projects/${projectId}/events.json?${query.toString()}`).then(json);
+  return fetch(`${B}/projects/${projectId}/events/history?${query.toString()}`).then((r) =>
+    json<RunEvent[]>(r),
+  );
 }
 
 export async function fetchAllEvents(projectId: string): Promise<RunEvent[]> {
@@ -78,20 +66,4 @@ export async function fetchAllEvents(projectId: string): Promise<RunEvent[]> {
     after = batch[batch.length - 1]?.id ?? after;
   }
   return events;
-}
-
-export function runPipeline(projectId: string, stages = "graph,generate"): Promise<{ run_id: string }> {
-  return fetch(`${B}/projects/${projectId}/run?stages=${encodeURIComponent(stages)}`, {
-    method: "POST",
-  }).then(json);
-}
-
-export function retryFailedLeaves(projectId: string): Promise<{ items: number }> {
-  return fetch(`${B}/projects/${projectId}/generate?only_failed=true`, {
-    method: "POST",
-  }).then(json);
-}
-
-export function fetchTrace(projectId: string, nodeId: string): Promise<GenerationTrace> {
-  return fetch(`${B}/projects/${projectId}/leaves/${nodeId}/trace`).then(json);
 }

@@ -6,30 +6,44 @@ import { api, type Project } from "../api/client";
 import { Card } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { Dropzone } from "../components/Dropzone";
-import {
-  ArrowRight,
-  Clock,
-  Folder,
-  ListChecks,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  UploadCloud,
-} from "../components/Icons";
+import { ArrowRight, Folder, ListChecks, ShieldCheck, Sparkles, UploadCloud } from "../components/Icons";
 import { ProjectCardSkeleton } from "../components/Skeleton";
-import { StatTile } from "../components/StatTile";
 import { useToast } from "../components/Toast";
 import { errorMessage } from "../lib/errors";
 import { staggerContainer, staggerItem } from "../lib/motion";
 import { projectStatusMeta } from "../lib/status";
 
+const STEPS = ["Document", "Structure", "Context", "Generation", "Backlog"];
+
+function stepForStatus(status: string): number {
+  switch (status) {
+    case "uploaded":
+    case "parsed":
+      return 1;
+    case "structured":
+      return 2;
+    case "linked":
+    case "awaiting_context_approval":
+      return 3;
+    case "generating":
+      return 4;
+    case "generated":
+    case "in_review":
+    case "approved":
+    case "exported":
+      return 5;
+    default:
+      return 0;
+  }
+}
+
 function ProjectCard({ project }: { project: Project }) {
   const reduced = useReducedMotion();
-  const found = project.checklist?.found?.length ?? 0;
-  const missing = project.checklist?.missing?.length ?? 0;
-  const total = found + missing;
-  const percent = total ? Math.round((found / total) * 100) : 0;
   const status = projectStatusMeta(project.status);
+  const step = stepForStatus(project.status);
+  const percent = step === 0 ? 0 : Math.round((step / STEPS.length) * 100);
+  const found = project.checklist?.found?.length ?? 0;
+  const total = found + (project.checklist?.missing?.length ?? 0);
 
   return (
     <motion.div variants={staggerItem}>
@@ -56,23 +70,14 @@ function ProjectCard({ project }: { project: Project }) {
               transition={{ duration: reduced ? 0 : 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.08 }}
             />
           </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              marginTop: 7,
-              fontSize: 11.5,
-              color: "var(--muted)",
-            }}
-          >
-            <span>{total ? `${found} of ${total} expected sections found` : "Checklist pending"}</span>
-            <span>{total ? `${percent}%` : "—"}</span>
+          <div className="project-card__steps">
+            <span>{step === 0 ? "Needs attention" : `Step ${step} of 5 · ${STEPS[step - 1]}`}</span>
+            <span>{total ? `${found}/${total} sections` : "Checklist pending"}</span>
           </div>
         </div>
 
         <div className="project-card__meta">
-          <span>Workspace & traceability</span>
+          <span>{project.context_approved ? "Context approved" : "Traceability workspace"}</span>
           <span className="project-card__link">
             Open <ArrowRight size={13} />
           </span>
@@ -103,41 +108,24 @@ export default function Projects() {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast({
         tone: "success",
-        title: "Specification ingested",
-        message: `“${project.name}” is ready. The document tree has been built.`,
+        title: "Specification prepared",
+        message: "The document is parsed, structured and linked. Review the context next.",
       });
       setProjectName("");
       navigate(`/p/${project.id}`);
     },
     onError: (uploadError) => {
-      toast({
-        tone: "error",
-        title: "Upload failed",
-        message: errorMessage(uploadError),
-      });
+      toast({ tone: "error", title: "Upload failed", message: errorMessage(uploadError) });
     },
   });
 
   const projects = data ?? [];
-
   const stats = useMemo(() => {
     const inProgress = projects.filter((project) =>
-      ["ingested", "graph_built", "generated"].includes(project.status),
+      ["parsed", "structured", "linked", "awaiting_context_approval", "generating"].includes(project.status),
     ).length;
-    const ready = projects.filter((project) =>
-      ["validated", "exported"].includes(project.status),
-    ).length;
-    let found = 0;
-    let total = 0;
-    for (const project of projects) {
-      found += project.checklist?.found?.length ?? 0;
-      total += (project.checklist?.found?.length ?? 0) + (project.checklist?.missing?.length ?? 0);
-    }
-    return {
-      inProgress,
-      ready,
-      coverage: total ? Math.round((found / total) * 100) : 0,
-    };
+    const ready = projects.filter((project) => ["approved", "exported"].includes(project.status)).length;
+    return { inProgress, ready };
   }, [projects]);
 
   const handleFile = (file: File) => {
@@ -154,50 +142,39 @@ export default function Projects() {
 
   return (
     <div className="page page--home">
-      <section className="hero">
-        <div className="hero__beam" aria-hidden="true">
-          <img src="/ey-beam.svg" alt="" />
-        </div>
+      <section className="hero hero--compact">
         {!reduced && (
           <motion.div
             className="hero__sweep"
             aria-hidden="true"
             initial={{ x: "-70%" }}
             animate={{ x: "220%" }}
-            transition={{ duration: 7.5, repeat: Infinity, repeatDelay: 2.4, ease: "easeInOut" }}
+            transition={{ duration: 9, repeat: Infinity, repeatDelay: 4, ease: "easeInOut" }}
           />
         )}
-
         <div className="container hero-inner">
-          <motion.div
-            initial={{ opacity: 0, y: reduced ? 0 : 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <div className="hero__eyebrow">
-              <span aria-hidden="true" />
-              EY Cortex AI · Business analysis
-            </div>
-            <h1>
-              From specification to <span className="accent">backlog</span>, in minutes
-            </h1>
-            <p className="hero__lede">
-              Upload a functional specification. We extract its structure, connect related
-              sections, and generate a traceable epic, story and test backlog for your
-              business analysts to validate.
-            </p>
-            <div className="hero__meta">
-              <span className="hero__meta-item">
-                <Sparkles size={14} /> Structure extracted automatically
-              </span>
-              <span className="hero__meta-item">
-                <Target size={14} /> Every item traced to its source
-              </span>
-              <span className="hero__meta-item">
-                <ShieldCheck size={14} /> Human validation built in
-              </span>
-            </div>
-          </motion.div>
+          <div className="hero__eyebrow">
+            <span aria-hidden="true" />
+            EY Cortex AI · Business analysis
+          </div>
+          <h1>
+            From specification to <span className="accent">validated backlog</span>
+          </h1>
+          <p className="hero__lede">
+            Upload a functional specification. We prepare the document, expose the structure and
+            links, then wait for your context approval before generating a traceable backlog.
+          </p>
+          <div className="hero__meta">
+            <span className="hero__meta-item">
+              <Sparkles size={14} /> 5 calm steps
+            </span>
+            <span className="hero__meta-item">
+              <ShieldCheck size={14} /> 2 human checkpoints
+            </span>
+            <span className="hero__meta-item">
+              <ListChecks size={14} /> Every item traced to its source
+            </span>
+          </div>
         </div>
       </section>
 
@@ -208,19 +185,17 @@ export default function Projects() {
               onFile={handleFile}
               busy={upload.isPending}
               disabled={upload.isPending}
-              busyLabel="Reading document, extracting headings and tables…"
+              busyLabel="Parsing, structuring and linking the specification…"
             />
-
             <div className="upload-card__side">
               <div>
                 <div className="eyebrow" style={{ marginBottom: 8 }}>
                   <span className="eyebrow__dot" aria-hidden="true" />
                   New analysis
                 </div>
-                <h2>Turn a document into a validated backlog</h2>
+                <h2>Drop a specification to begin</h2>
                 <p style={{ marginTop: 8 }}>
-                  Add an optional project name, then drop the specification. The pipeline runs
-                  in your environment.
+                  Steps 1–3 run automatically. You approve the context before anything is generated.
                 </p>
               </div>
 
@@ -237,60 +212,24 @@ export default function Projects() {
                 />
               </div>
 
-              <div className="chip-wrap" style={{ marginTop: 0 }}>
-                <Chip tone="outline">DOCX</Chip>
-                <Chip tone="outline">PDF</Chip>
-                <Chip tone="outline">≤ 25 MB</Chip>
-              </div>
-
               <div className="upload-card__foot">
                 <ShieldCheck size={14} />
-                Private by design · no data leaves your tenant
+                Offline demo when no provider key is configured
               </div>
             </div>
           </Card>
         </div>
 
-        <motion.div
-          className="stat-grid"
-          variants={staggerContainer}
-          initial="hidden"
-          animate="show"
-        >
-          <StatTile
-            label="Projects"
-            value={projects.length}
-            hint="Specifications analysed"
-            icon={<Folder size={13} />}
-          />
-          <StatTile
-            label="In progress"
-            value={stats.inProgress}
-            hint="Graph or generation running"
-            icon={<Clock size={13} />}
-          />
-          <StatTile
-            label="Ready to export"
-            value={stats.ready}
-            hint="Validated backlogs"
-            icon={<Target size={13} />}
-          />
-          <StatTile
-            label="Checklist coverage"
-            value={stats.coverage}
-            suffix="%"
-            hint="Expected sections found"
-            icon={<ListChecks size={13} />}
-          />
-        </motion.div>
-
         <section className="projects-section" id="projects">
           <div className="section-head">
             <div>
-              <h2 className="section-title">Recent projects</h2>
-              <p>Pick up where your analysis team left off.</p>
+              <h2 className="section-title">Projects</h2>
+              <p>
+                {projects.length} specification{projects.length === 1 ? "" : "s"} ·{" "}
+                {stats.inProgress} in progress · {stats.ready} ready
+              </p>
             </div>
-            <Chip tone="default">{projects.length} total</Chip>
+            <Chip tone="outline">{projects.length} total</Chip>
           </div>
 
           {isLoading ? (
@@ -308,7 +247,7 @@ export default function Projects() {
             <div className="projects-empty">
               <UploadCloud size={26} />
               <strong>No projects yet</strong>
-              <span>Drop a specification above to create your first analysis.</span>
+              <span>Drop a specification above to create the first analysis.</span>
             </div>
           ) : (
             <motion.div
@@ -322,45 +261,6 @@ export default function Projects() {
               ))}
             </motion.div>
           )}
-        </section>
-
-        <section id="workflow" style={{ marginTop: 44 }}>
-          <div className="section-head">
-            <div>
-              <h2 className="section-title">How the pipeline works</h2>
-              <p>A transparent, auditable path from document to delivery.</p>
-            </div>
-          </div>
-          <div className="workflow">
-            {[
-              {
-                index: "01",
-                title: "Ingest",
-                text: "Headings, tables and text are extracted with a completeness checklist.",
-              },
-              {
-                index: "02",
-                title: "Connect",
-                text: "A meaning graph links related sections and explicit references.",
-              },
-              {
-                index: "03",
-                title: "Generate",
-                text: "Epics, stories, acceptance criteria and tests are drafted per section.",
-              },
-              {
-                index: "04",
-                title: "Validate",
-                text: "Business analysts approve, edit or reject, then export to Excel.",
-              },
-            ].map((step) => (
-              <div className="workflow__step" key={step.index}>
-                <div className="workflow__index">{step.index}</div>
-                <h3>{step.title}</h3>
-                <p>{step.text}</p>
-              </div>
-            ))}
-          </div>
         </section>
       </div>
     </div>

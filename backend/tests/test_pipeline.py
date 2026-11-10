@@ -141,6 +141,14 @@ def test_full_happy_path_fake_mode():
     assert trace is not None
     assert trace.prompt == preview["prompt"]
 
+    story = next(
+        story for epic in backlog["epics"] for story in epic["stories"]
+    )
+    item_trace = client.get(f"/api/v1/items/{story['id']}/trace")
+    assert item_trace.status_code == 200, item_trace.text
+    assert item_trace.json()["prompt"]
+    assert item_trace.json()["response_json"]
+
 
 def test_role_change_excludes_section_from_generation():
     pid = _upload("role-change")

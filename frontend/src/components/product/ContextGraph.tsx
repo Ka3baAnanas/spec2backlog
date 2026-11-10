@@ -10,51 +10,32 @@ import {
 } from "d3-force";
 import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type WheelEvent } from "react";
-import type { Node } from "../../api/client";
-import type { LeafRunState, RunState } from "../../lib/runState";
+import type { ProjectLink, Section } from "../../api/client";
 import { Chip } from "../Chip";
 import { ZoomIn, ZoomOut } from "../Icons";
 
 const WIDTH = 820;
-const HEIGHT = 390;
+const HEIGHT = 440;
 
-type GraphNode = SimulationNodeDatum & {
-  id: string;
-  number: string;
-  title: string;
-};
-
-type GraphLink = SimulationLinkDatum<GraphNode> & {
-  id: string;
-  kind: string;
-  score: number;
-};
-
+type GraphNode = SimulationNodeDatum & { id: string; number: string; title: string; role: string };
+type GraphLink = SimulationLinkDatum<GraphNode> & { id: string; kind: string; score: number };
 type Transform = { x: number; y: number; k: number };
-
-type DragState = {
-  x: number;
-  y: number;
-  tx: number;
-  ty: number;
-  sx: number;
-  sy: number;
-};
+type DragState = { x: number; y: number; tx: number; ty: number; sx: number; sy: number };
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function MeaningGraph({
-  leaves,
-  state,
+export function ContextGraph({
+  sections,
+  links,
   selectedId,
   onSelect,
 }: {
-  leaves: Node[];
-  state: RunState;
+  sections: Section[];
+  links: ProjectLink[];
   selectedId: string | null;
-  onSelect: (node: Node) => void;
+  onSelect: (section: Section) => void;
 }) {
   const reduced = useReducedMotion();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -65,84 +46,62 @@ export function MeaningGraph({
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, k: 1 });
 
-  const processedIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const [id, runtime] of Object.entries(state.leaves)) {
-      if (runtime.state !== "waiting") ids.add(id);
-    }
-    for (const edge of state.edges) {
-      ids.add(edge.source);
-      ids.add(edge.target);
-    }
-    return ids;
-  }, [state.leaves, state.edges]);
-
-  const nodeSpecs = useMemo(
+  const visibleSections = useMemo(
     () =>
-      leaves
-        .filter((node) => processedIds.has(node.id))
-        .map((node) => ({
-          id: node.id,
-          number: node.number,
-          title: node.title,
-          source: node,
-        })),
-    [leaves, processedIds],
-  );
-
-  const visibleNodeIds = useMemo(
-    () => new Set(nodeSpecs.map((node) => node.id)),
-    [nodeSpecs],
-  );
-  const edgeSpecs = useMemo(
-    () =>
-      state.edges.filter(
-        (edge) =>
-          processedIds.has(edge.source) &&
-          processedIds.has(edge.target) &&
-          visibleNodeIds.has(edge.source) &&
-          visibleNodeIds.has(edge.target),
+      sections.filter(
+        (section) =>
+          section.text.trim() && section.role !== "front_matter" && section.role !== "ignored",
       ),
-    [state.edges, processedIds, visibleNodeIds],
+    [sections],
   );
 
-  const nodeKey = nodeSpecs.map((node) => node.id).join("|");
-  const edgeKey = edgeSpecs.map((edge) => edge.id).join("|");
+  const visibleIds = useMemo(() => new Set(visibleSections.map((section) => section.id)), [visibleSections]);
+  const enabledLinks = useMemo(
+    () =>
+      links.filter(
+        (link) => link.enabled && visibleIds.has(link.source_id) && visibleIds.has(link.target_id),
+      ),
+    [links, visibleIds],
+  );
+
+  const nodeKey = visibleSections.map((section) => section.id).join("|");
+  const edgeKey = enabledLinks.map((link) => link.id).join("|");
   const simulationKey = `${nodeKey}##${edgeKey}`;
 
   useEffect(() => {
     const previous = simulationRef.current;
     previous?.stop();
-    const nodes: GraphNode[] = nodeSpecs.map((spec, index) => {
-      const stored = positionsRef.current.get(spec.id);
-      const angle = (index / Math.max(1, nodeSpecs.length)) * Math.PI * 2;
-      const radius = 60 + Math.min(180, nodeSpecs.length * 5);
+    const nodes: GraphNode[] = visibleSections.map((section, index) => {
+      const stored = positionsRef.current.get(section.id);
+      const angle = (index / Math.max(1, visibleSections.length)) * Math.PI * 2;
+      const radius = 70 + Math.min(190, visibleSections.length * 4);
       return {
-        id: spec.id,
-        number: spec.number,
-        title: spec.title,
+        id: section.id,
+        number: section.number,
+        title: section.title,
+        role: section.role,
         x: stored?.x ?? WIDTH / 2 + Math.cos(angle) * radius,
         y: stored?.y ?? HEIGHT / 2 + Math.sin(angle) * radius,
       };
     });
     const byId = new Map(nodes.map((node) => [node.id, node]));
-    const links: GraphLink[] = edgeSpecs.map((edge) => ({
-      id: edge.id,
-      kind: edge.kind,
-      score: edge.score,
-      source: byId.get(edge.source)?.id ?? edge.source,
-      target: byId.get(edge.target)?.id ?? edge.target,
+    const graphLinks: GraphLink[] = enabledLinks.map((link) => ({
+      id: String(link.id),
+      kind: link.kind,
+      score: link.score,
+      source: byId.get(link.source_id)?.id ?? link.source_id,
+      target: byId.get(link.target_id)?.id ?? link.target_id,
     }));
     const simulation = forceSimulation<GraphNode>(nodes)
-      .force("charge", forceManyBody<GraphNode>().strength(-120))
+      .force("charge", forceManyBody<GraphNode>().strength(-150))
       .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
-      .force("collide", forceCollide<GraphNode>().radius(18))
+      .force("collide", forceCollide<GraphNode>().radius(22))
       .force(
         "link",
-        forceLink<GraphNode, GraphLink>(links)
+        forceLink<GraphNode, GraphLink>(graphLinks)
           .id((node) => node.id)
-          .distance((link) => 70 + (1 - link.score) * 70)
-          .strength(0.45),
+          .distance((link) => 75 + (1 - link.score) * 70)
+          .strength(0.42),
       )
       .alpha(0.9)
       .on("tick", () => {
@@ -159,7 +118,7 @@ export function MeaningGraph({
       simulation.stop();
       if (simulationRef.current === simulation) simulationRef.current = null;
     };
-    // The key captures the structural graph; state changes recolor without restarting physics.
+    // The key captures the graph structure; selection only recolors.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simulationKey]);
 
@@ -172,19 +131,21 @@ export function MeaningGraph({
   const neighbours = useMemo(() => {
     const set = new Set<string>();
     if (!focusId) return set;
-    for (const edge of state.edges) {
-      if (edge.source === focusId) set.add(edge.target);
-      if (edge.target === focusId) set.add(edge.source);
+    for (const link of enabledLinks) {
+      if (link.source_id === focusId) set.add(link.target_id);
+      if (link.target_id === focusId) set.add(link.source_id);
     }
     return set;
-  }, [focusId, state.edges]);
+  }, [focusId, enabledLinks]);
 
-  const zoomBy = (factor: number, anchorX = WIDTH / 2, anchorY = HEIGHT / 2) => {
+  const byId = useMemo(() => new Map(visibleSections.map((section) => [section.id, section])), [visibleSections]);
+
+  const zoomBy = (factor: number) => {
     setTransform((previous) => {
       const k = clamp(previous.k * factor, 0.45, 2.8);
-      const worldX = (anchorX - previous.x) / previous.k;
-      const worldY = (anchorY - previous.y) / previous.k;
-      return { k, x: anchorX - worldX * k, y: anchorY - worldY * k };
+      const worldX = (WIDTH / 2 - previous.x) / previous.k;
+      const worldY = (HEIGHT / 2 - previous.y) / previous.k;
+      return { k, x: WIDTH / 2 - worldX * k, y: HEIGHT / 2 - worldY * k };
     });
   };
 
@@ -195,7 +156,12 @@ export function MeaningGraph({
     const rect = svg.getBoundingClientRect();
     const px = ((event.clientX - rect.left) / rect.width) * WIDTH;
     const py = ((event.clientY - rect.top) / rect.height) * HEIGHT;
-    zoomBy(event.deltaY < 0 ? 1.12 : 0.89, px, py);
+    setTransform((previous) => {
+      const k = clamp(previous.k * (event.deltaY < 0 ? 1.12 : 0.89), 0.45, 2.8);
+      const worldX = (px - previous.x) / previous.k;
+      const worldY = (py - previous.y) / previous.k;
+      return { k, x: px - worldX * k, y: py - worldY * k };
+    });
   };
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
@@ -232,40 +198,38 @@ export function MeaningGraph({
     }
   };
 
-  const linksByKind = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const edge of state.edges) counts.set(edge.kind, (counts.get(edge.kind) ?? 0) + 1);
-    return Array.from(counts.entries());
-  }, [state.edges]);
+  const counts = useMemo(() => {
+    const byKind = new Map<string, number>();
+    for (const link of enabledLinks) byKind.set(link.kind, (byKind.get(link.kind) ?? 0) + 1);
+    return Array.from(byKind.entries());
+  }, [enabledLinks]);
 
   return (
-    <div className="live-graph">
-      <div className="live-panel__head">
+    <div className="context-graph">
+      <div className="context-graph__head">
         <div>
           <h2>Meaning graph</h2>
-          <p>Leaves appear as they are embedded; links arrive one by one.</p>
+          <p>Click a section to inspect its links and exact prompt.</p>
         </div>
-        <div className="live-graph__chips">
-          <Chip tone="blue">{state.edges.filter((edge) => edge.kind === "similarity").length} similar</Chip>
-          <Chip tone="amber">
-            {state.edges.filter((edge) => edge.kind === "reference").length} explicit
-          </Chip>
+        <div className="context-graph__chips">
+          <Chip tone="outline">{visibleSections.length} sections</Chip>
+          <Chip tone="outline">{enabledLinks.length} links</Chip>
         </div>
       </div>
 
-      {nodeSpecs.length === 0 ? (
-        <div className="live-graph__empty">
-          <strong>Graph is waiting for leaves</strong>
-          Nodes will appear when the graph stage starts embedding sections.
+      {visibleSections.length === 0 ? (
+        <div className="context-graph__empty">
+          <strong>No graph yet</strong>
+          The document has no text-bearing sections to link.
         </div>
       ) : (
-        <div className="live-graph__canvas">
+        <div className="live-graph__canvas context-graph__canvas">
           <svg
             ref={svgRef}
             className="live-graph__svg"
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             role="img"
-            aria-label="Animated meaning graph"
+            aria-label="Meaning graph of document sections"
             onWheel={handleWheel}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -273,53 +237,55 @@ export function MeaningGraph({
             onPointerCancel={endDrag}
           >
             <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
-              {edgeSpecs.map((edge) => {
-                const source = positionById.get(edge.source);
-                const target = positionById.get(edge.target);
+              {enabledLinks.map((link) => {
+                const source = positionById.get(link.source_id);
+                const target = positionById.get(link.target_id);
                 if (!source || !target) return null;
-                const incident = !focusId || edge.source === focusId || edge.target === focusId;
+                const incident =
+                  !focusId || link.source_id === focusId || link.target_id === focusId;
                 return (
                   <motion.path
-                    key={edge.id}
+                    key={link.id}
                     d={`M ${source.x} ${source.y} L ${target.x} ${target.y}`}
-                    className={[
-                      "live-graph-edge",
-                      `is-${edge.kind}`,
-                      incident ? "is-hot" : "is-muted",
-                    ].join(" ")}
-                    strokeWidth={1.2 + edge.score * 2.4}
+                    className={`live-graph-edge is-${link.kind} ${incident ? "is-hot" : "is-muted"}`}
+                    strokeWidth={1.2 + link.score * 2.4}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: incident ? 0.9 : 0.16 }}
-                    transition={{ duration: reduced ? 0 : 0.35 }}
+                    animate={{ opacity: incident ? 0.85 : 0.14 }}
+                    transition={{ duration: reduced ? 0 : 0.3 }}
                   />
                 );
               })}
-
-              {nodeSpecs.map((node) => {
-                const position = positionById.get(node.id);
+              {visibleSections.map((section) => {
+                const position = positionById.get(section.id);
                 if (!position) return null;
-                const leafState: LeafRunState = state.leaves[node.id]?.state ?? "waiting";
-                const related = !focusId || node.id === focusId || neighbours.has(node.id);
+                const related = !focusId || section.id === focusId || neighbours.has(section.id);
                 return (
                   <motion.g
-                    key={node.id}
-                    data-graph-node={node.id}
-                    className={`live-graph-node is-${leafState} ${related ? "" : "is-muted"}`}
+                    key={section.id}
+                    data-graph-node={section.id}
+                    className={[
+                      "live-graph-node",
+                      `is-role-${section.role}`,
+                      section.id === selectedId ? "is-selected" : "",
+                      related ? "" : "is-muted",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     transform={`translate(${position.x} ${position.y})`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: related ? 1 : 0.25 }}
-                    transition={{ duration: reduced ? 0 : 0.3 }}
-                    onPointerEnter={() => setHoverId(node.id)}
-                    onPointerLeave={() => setHoverId((current) => (current === node.id ? null : current))}
+                    transition={{ duration: reduced ? 0 : 0.28 }}
+                    onPointerEnter={() => setHoverId(section.id)}
+                    onPointerLeave={() => setHoverId((current) => (current === section.id ? null : current))}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onSelect(node.source);
+                      onSelect(section);
                     }}
                   >
-                    <title>{`${node.number || "Section"} ${node.title}`}</title>
-                    <circle r={node.id === selectedId ? 10 : 7} />
-                    <text y={18} textAnchor="middle" className="live-graph-node__label">
-                      {node.number || "§"}
+                    <title>{`${section.number || "Section"} ${section.title}`}</title>
+                    <circle r={section.id === selectedId ? 11 : 7} />
+                    <text y={19} textAnchor="middle" className="live-graph-node__label">
+                      {section.number || "§"}
                     </text>
                   </motion.g>
                 );
@@ -334,11 +300,7 @@ export function MeaningGraph({
             <button type="button" onClick={() => zoomBy(0.85)} aria-label="Zoom out">
               <ZoomOut size={14} />
             </button>
-            <button
-              type="button"
-              onClick={() => setTransform({ x: 0, y: 0, k: 1 })}
-              aria-label="Reset graph view"
-            >
+            <button type="button" onClick={() => setTransform({ x: 0, y: 0, k: 1 })} aria-label="Reset graph view">
               1:1
             </button>
           </div>
@@ -350,14 +312,17 @@ export function MeaningGraph({
           <i className="is-similarity" /> similarity
         </span>
         <span>
-          <i className="is-reference" /> explicit reference
+          <i className="is-reference" /> reference
+        </span>
+        <span>
+          <i className="is-lexical" /> lexical
         </span>
         <span>Thickness = score</span>
-        <span>{state.edges.length} links drawn</span>
-        {linksByKind.length > 0 && (
-          <span>
-            {linksByKind.map(([kind, count]) => `${count} ${kind}`).join(" · ")}
-          </span>
+        {counts.map(([kind, count]) => (
+          <span key={kind}>{`${count} ${kind}`}</span>
+        ))}
+        {selectedId && byId.get(selectedId) && (
+          <span className="context-graph__focus">{byId.get(selectedId)?.title}</span>
         )}
       </div>
     </div>
