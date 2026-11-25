@@ -16,6 +16,7 @@ from collections.abc import Callable
 import httpx
 
 from app.core.config import settings
+from app.providers.errors import ProviderUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ def post_with_retry(
     json: dict,
     timeout: float,
     on_event: EventHook = None,
+    retry_503_exact: bool = False,
 ) -> httpx.Response:
     """POST with request throttling and retry/backoff for rate limits and 5xx."""
     max_retries = max(1, settings.gemini_max_retries)
@@ -112,7 +114,9 @@ def post_with_retry(
             response = httpx.post(url, params=params, json=json, timeout=timeout)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             if attempt > max_retries:
-                raise
+                raise ProviderUnavailableError(
+                    f"{scope} network error: {type(exc).__name__}: {exc}"
+                ) from exc
             delay = min(max_wait, base * 2 ** (attempt - 1)) + random.uniform(0, 0.5)
             _report(
                 on_event,
@@ -132,10 +136,13 @@ def post_with_retry(
             continue
 
         if response.status_code in RETRYABLE_STATUS:
-            delay = _retry_delay(response)
-            if delay is None:
-                delay = base * 2 ** (attempt - 1)
-            delay = min(max_wait, max(0.5, delay)) + random.uniform(0, 0.75)
+            if response.status_code == 503 and retry_503_exact:
+                delay = min(32.0, 2.0 ** attempt)
+            else:
+                delay = _retry_delay(response)
+                if delay is None:
+                    delay = base * 2 ** (attempt - 1)
+                delay = min(max_wait, max(0.5, delay)) + random.uniform(0, 0.75)
             if attempt > max_retries:
                 _report(
                     on_event,
@@ -148,7 +155,10 @@ def post_with_retry(
                         "attempt": attempt,
                     },
                 )
-                response.raise_for_status()
+                raise ProviderUnavailableError(
+                    f"{scope} still unavailable (HTTP {response.status_code})",
+                    status_code=response.status_code,
+                )
             _report(
                 on_event,
                 "warning",

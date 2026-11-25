@@ -48,6 +48,7 @@ def extract_docx(path: Path) -> PivotDocument:
         style = item.style.name or ""
         if style.lower().startswith("toc"):
             out.skipped_toc += 1  # table of contents is noise
+            out.skipped.append(text)
             continue
         level = _heading_level(item)
         if level:

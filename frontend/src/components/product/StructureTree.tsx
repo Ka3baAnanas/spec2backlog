@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Section, SectionRole } from "../../api/client";
 import { easePremium } from "../../lib/motion";
 import { roleMeta } from "../../lib/status";
+import { Chip } from "../Chip";
 import { ChevronRight } from "../Icons";
 
 const ROLES: SectionRole[] = ["requirement", "context", "glossary", "front_matter", "ignored"];
@@ -15,6 +16,9 @@ type ItemProps = {
   onToggle: (id: string) => void;
   onRoleChange: (section: Section, role: SectionRole) => void;
   updating: string | null;
+  onEditManual: (section: Section) => void;
+  onDeleteManual: (section: Section) => void;
+  deletingId: string | null;
 };
 
 function StructureItem({
@@ -25,6 +29,9 @@ function StructureItem({
   onToggle,
   onRoleChange,
   updating,
+  onEditManual,
+  onDeleteManual,
+  deletingId,
 }: ItemProps) {
   const reduced = useReducedMotion();
   const children = childrenOf(node.id);
@@ -60,19 +67,38 @@ function StructureItem({
           {node.title || "Untitled section"}
         </span>
         {node.is_leaf && <span className="tree-row__leaf-dot" aria-hidden="true" />}
-        <select
-          className={`role-select role-select--${meta.tone}`}
-          value={node.role}
-          disabled={updating === node.id}
-          aria-label={`Role for ${node.title || "untitled section"}`}
-          onChange={(event) => onRoleChange(node, event.target.value as SectionRole)}
-        >
-          {ROLES.map((role) => (
-            <option key={role} value={role}>
-              {roleMeta(role).label}
-            </option>
-          ))}
-        </select>
+        {node.source === "manual" ? (
+          <span className="tree-row__manual">
+            <Chip tone="blue">Manual</Chip>
+            <button type="button" className="tree-row__action" onClick={() => onEditManual(node)}>
+              Edit
+            </button>
+            <button
+              type="button"
+              className="tree-row__action is-danger"
+              disabled={deletingId === node.id}
+              onClick={() => {
+                if (window.confirm(`Delete manual context "${node.title}"?`)) onDeleteManual(node);
+              }}
+            >
+              Delete
+            </button>
+          </span>
+        ) : (
+          <select
+            className={`role-select role-select--${meta.tone}`}
+            value={node.role}
+            disabled={updating === node.id}
+            aria-label={`Role for ${node.title || "untitled section"}`}
+            onChange={(event) => onRoleChange(node, event.target.value as SectionRole)}
+          >
+            {ROLES.map((role) => (
+              <option key={role} value={role}>
+                {roleMeta(role).label}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <AnimatePresence initial={false}>
@@ -95,6 +121,9 @@ function StructureItem({
                 onToggle={onToggle}
                 onRoleChange={onRoleChange}
                 updating={updating}
+                onEditManual={onEditManual}
+                onDeleteManual={onDeleteManual}
+                deletingId={deletingId}
               />
             ))}
           </motion.ul>
@@ -108,10 +137,16 @@ export function StructureTree({
   sections,
   onRoleChange,
   updating,
+  onEditManual,
+  onDeleteManual,
+  deletingId,
 }: {
   sections: Section[];
   onRoleChange: (section: Section, role: SectionRole) => void;
   updating: string | null;
+  onEditManual: (section: Section) => void;
+  onDeleteManual: (section: Section) => void;
+  deletingId: string | null;
 }) {
   const { roots, childrenOf, defaultExpanded } = useMemo(() => {
     const ids = new Set(sections.map((section) => section.id));
@@ -162,6 +197,9 @@ export function StructureTree({
           onToggle={toggle}
           onRoleChange={onRoleChange}
           updating={updating}
+          onEditManual={onEditManual}
+          onDeleteManual={onDeleteManual}
+          deletingId={deletingId}
         />
       ))}
     </ul>

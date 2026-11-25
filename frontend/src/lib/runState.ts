@@ -48,6 +48,7 @@ export type RunCounts = { stories: number; tests: number; questions: number };
 
 export type RunState = {
   lastEventId: number;
+  runId: string | null;
   events: RunEvent[];
   stages: Record<ChecklistStage, StageState>;
   leaves: Record<string, LeafRuntime>;
@@ -60,6 +61,7 @@ export type RunState = {
   context: Record<string, unknown>;
   generation: Record<string, unknown>;
   error: string | null;
+  demoMode: boolean;
 };
 
 export type RunAction = { type: "reset" } | { type: "event"; event: RunEvent };
@@ -89,6 +91,7 @@ function emptyStages(): Record<ChecklistStage, StageState> {
 export function initialRunState(): RunState {
   return {
     lastEventId: 0,
+    runId: null,
     events: [],
     stages: emptyStages(),
     leaves: {},
@@ -101,6 +104,7 @@ export function initialRunState(): RunState {
     context: {},
     generation: {},
     error: null,
+    demoMode: false,
   };
 }
 
@@ -167,6 +171,7 @@ export function runReducer(state: RunState, action: RunAction): RunState {
   const data = asRecord(event.data);
   const key = stageKey(event.stage);
   const message = event.message || `${event.stage} ${event.type}`;
+  let runId = state.runId;
   let stages = state.stages;
   let leaves = state.leaves;
   let edges = state.edges;
@@ -177,6 +182,8 @@ export function runReducer(state: RunState, action: RunAction): RunState {
   let context = state.context;
   let generation = state.generation;
   let error = state.error;
+  let demoMode = state.demoMode;
+  if (data.demo_mode) demoMode = true;
 
   if (key) {
     const current = stages[key];
@@ -272,13 +279,21 @@ export function runReducer(state: RunState, action: RunAction): RunState {
 
   if (event.stage === "generation") {
     if (event.type === "stage_start") {
+      const incomingRunId = asString(data.run_id);
+      if (incomingRunId && incomingRunId !== state.runId) {
+        leaves = {};
+        currentSectionId = null;
+      }
+      runId = incomingRunId || state.runId;
       generation = { ...generation, ...data };
       currentSectionId = null;
       stages = {
         ...stages,
         generation: {
           ...stages.generation,
-          counter: `${asNumber(data.N)} sections queued${data.only_failed ? " · retry" : ""}`,
+          counter: `${asNumber(data.N)} sections queued${data.only_failed ? " · retry" : ""}${
+            data.resume ? " · resume" : ""
+          }`,
         },
       };
     }
@@ -364,6 +379,7 @@ export function runReducer(state: RunState, action: RunAction): RunState {
   return {
     ...state,
     lastEventId: event.id,
+    runId,
     events: [...state.events, event],
     stages,
     leaves,
@@ -376,6 +392,7 @@ export function runReducer(state: RunState, action: RunAction): RunState {
     context,
     generation,
     error,
+    demoMode,
   };
 }
 

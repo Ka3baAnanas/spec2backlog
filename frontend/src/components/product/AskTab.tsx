@@ -91,7 +91,7 @@ export function AskTab({ projectId, sections }: { projectId: string; sections: S
         <Card className="ask-source" pad>
           <div className="ask-source__head">
             <div>
-              <span className="question-group__num">Section {selected.number || "—"}</span>
+              <span className="question-group__num">Section {selected.number || "n/a"}</span>
               <h3>{selected.title}</h3>
             </div>
             <Chip tone="outline">Citation</Chip>

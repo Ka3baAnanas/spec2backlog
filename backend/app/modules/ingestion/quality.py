@@ -52,3 +52,10 @@ def pivot_preview(doc: PivotDocument, limit: int = 60) -> list[dict]:
         {"kind": block.kind, "text": block.text[:500], "level": block.level}
         for block in doc.blocks[:limit]
     ]
+
+
+def document_blocks(doc: PivotDocument) -> list[dict]:
+    return [
+        {"kind": block.kind, "text": block.text, "level": block.level}
+        for block in doc.blocks
+    ]

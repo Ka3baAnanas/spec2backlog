@@ -8,7 +8,7 @@ BACKEND LAYOUT (backend/app):
  main.py
  core/        config.py, db.py, events.py (run events + SSE), jobs.py (background runner), schema guard
  domain/      models.py, schemas.py, enums.py
- providers/   llm/{base,gemini,groq,openai_compat,fake}.py ; embeddings/{base,gemini,fake}.py ; factory.py
+ providers/   llm/{base,gemini,groq,openai_compat,ollama(via openai_compat),fallback,fake}.py ; embeddings/{base,gemini,fake}.py ; factory.py
  modules/
    ingestion/   parsers/{docx,pdf,ocr(stub)}.py, pivot.py, quality.py (expected-sections checklist, warnings), service.py
    structure/   tree.py (pivot -> tree, lineage, DFS), classifier.py (role per section: requirement|context|glossary|front_matter|ignored; heuristic now, LLM later), service.py
@@ -40,6 +40,10 @@ API (/api/v1):
  POST /projects/{id}/versions -> 501 for now
  GET /settings/providers | GET /health
 
-PROVIDERS (.env): LLM_PROVIDER=gemini|groq|openai_compat|fake ; EMBEDDING_PROVIDER=gemini|fake ; GEMINI_API_KEY ; GROQ_API_KEY ; model names configurable (LLM_MODEL, EMBEDDING_MODEL). With no key -> fake providers (offline demo), clearly flagged in /settings/providers and events.
+PROVIDERS (.env): LLM_PROVIDER=ollama|gemini|groq|openai_compat|fake ; LLM_FALLBACK_PROVIDER (optional provider-level failover, e.g. gemini) ; OLLAMA_API_KEY + OLLAMA_BASE_URL (cloud https://ollama.com/v1 or local) ; GEMINI_API_KEY ; GROQ_API_KEY ; model names configurable (LLM_MODEL, GEMINI_FALLBACK_MODEL, EMBEDDING_MODEL). EMBEDDING_PROVIDER=gemini|fake (Ollama cloud has no embeddings endpoint). Fake content is only produced when fake is explicitly configured; a configured real provider that is unavailable raises ProviderUnavailableError/ProviderConfigurationError, is reported in /settings/providers and events, and never silently degrades to demo output.
+
+RETRY/RECOVERY: Gemini HTTP retries 429/5xx with backoff (GEMINI_* knobs) ; OpenAI-compatible providers retry 408/429/5xx and network errors with backoff (LLM_MAX_RETRIES, LLM_RETRY_BASE_SECONDS, LLM_RETRY_MAX_SECONDS) ; generator retries each leaf once ; FallbackLLM switches to the secondary provider once per run ; retryable provider failures mark the run retry_pending, wait with exponential backoff, and resume from saved traces (completed leaves are reused, failed leaves regenerated, consolidation rerun) ; failed/partial runs never publish a backlog ; /retry-failed resumes from saved traces ; /recover and startup recovery resume interrupted runs.
+
+WORKERS: Celery with Redis broker/result backend runs generation.generate_project on the "generation" queue. Tasks retry infrastructure errors (OperationalError/InterfaceError) and retryable provider failures with exponential backoff (CELERY_RETRY_BACKOFF_SECONDS, CELERY_RETRY_MAX_BACKOFF_SECONDS) up to CELERY_TASK_MAX_RETRIES, always resuming from completed traces. USE_CELERY=false keeps the in-process thread runner for tests and local debugging. Event SSE reads RunEvent rows from PostgreSQL, so worker progress appears in the API without shared memory.
 
 FRONTEND (see later prompt): Home (drop + projects) ; Project with tabs Pipeline | Backlog | Questions | History | Ask (beta). Pipeline = 5-step wizard: Document, Structure, Context, Generation, Backlog.

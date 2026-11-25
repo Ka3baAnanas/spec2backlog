@@ -36,8 +36,11 @@ def to_pivot(path: Path) -> PivotDocument:
 
 
 def _clear_derived(db: Session, project_id: str) -> None:
-    for model in (Link, GlossaryTerm, ContextPack, BacklogItem, Question, GenerationTrace, Section):
+    for model in (Link, GlossaryTerm, ContextPack, BacklogItem, Question, GenerationTrace):
         db.query(model).filter(model.project_id == project_id).delete(synchronize_session=False)
+    db.query(Section).filter(
+        Section.project_id == project_id, Section.source != "manual"
+    ).delete(synchronize_session=False)
     db.flush()
 
 
@@ -103,7 +106,12 @@ def prepare_project(
         version=(last.version + 1) if last else 1,
         filename=filename or path.name,
         path=str(path),
-        stats={**doc_stats, "preview": quality.pivot_preview(pivot)},
+        stats={
+            **doc_stats,
+            "preview": quality.pivot_preview(pivot),
+            "document_blocks": quality.document_blocks(pivot),
+            "skipped_lines": list(pivot.skipped),
+        },
         warnings=doc_warnings,
         checklist=doc_checklist,
     )
@@ -112,6 +120,10 @@ def prepare_project(
     project.checklist = doc_checklist
     project.context_approved = False
     project.error = None
+    db.commit()
+    db.query(Section).filter(
+        Section.project_id == project_id, Section.source == "manual"
+    ).update({Section.document_id: document.id}, synchronize_session=False)
     db.commit()
     _emit_ingestion(project_id, pivot, doc_stats)
 
@@ -133,6 +145,11 @@ def prepare_project(
                 lineage=node.lineage,
             )
         )
+    root_id = next((node.id for node in nodes if node.parent is None), None)
+    if root_id:
+        db.query(Section).filter(
+            Section.project_id == project_id, Section.source == "manual"
+        ).update({Section.parent_id: root_id}, synchronize_session=False)
     project.status = "structured"
     db.commit()
     _emit_structure(project_id, nodes)

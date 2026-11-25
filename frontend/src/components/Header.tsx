@@ -1,11 +1,17 @@
 ﻿import { motion, useReducedMotion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
+import { useRunStreamContext } from "../hooks/useRunStream";
+import { selectGenerationStats } from "../lib/runState";
 
 export function Header() {
   const location = useLocation();
   const reduced = useReducedMotion();
   const segments = location.pathname.split("/").filter(Boolean);
   const projectId = segments[0] === "p" ? segments[1] : undefined;
+  const stream = useRunStreamContext();
+  const stats = selectGenerationStats(stream.state, 0);
+  const generating =
+    stream.state.stages.generation.status === "active" && Boolean(stream.projectId);
 
   return (
     <header className="site-header">
@@ -50,6 +56,16 @@ export function Header() {
         </nav>
 
         <div className="header-right">
+          {generating && (
+            <Link
+              to={`/p/${stream.projectId}`}
+              className="header-run-badge"
+              aria-label="Open live generation progress"
+            >
+              <span className="header-run-badge__dot" aria-hidden="true" />
+              Generating {stats.completed}/{stats.total || "…"}
+            </Link>
+          )}
           <span className="header-badge">
             <span className="header-badge__dot" aria-hidden="true" />
             EY Cortex AI

@@ -7,6 +7,9 @@ services:
       POSTGRES_DB: spec2backlog
     volumes: [pgdata:/var/lib/postgresql/data]
     ports: ["5432:5432"]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
   chroma:
     image: chromadb/chroma:latest
     volumes: [chromadata:/data]
@@ -14,10 +17,16 @@ services:
   backend:
     build: ./backend
     env_file: .env
-    depends_on: [db, chroma]
+    depends_on: [db, chroma, redis]
     volumes: ["./backend:/app", "./data:/data"]
     ports: ["8000:8000"]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+  celery-worker:
+    build: ./backend
+    env_file: .env
+    depends_on: [db, chroma, redis]
+    volumes: ["./backend:/app", "./data:/data"]
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=info --concurrency=2 --queues=generation
   frontend:
     image: node:22
     working_dir: /web

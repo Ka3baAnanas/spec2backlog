@@ -206,7 +206,7 @@ export default function Projects() {
                   className="input"
                   value={projectName}
                   onChange={(event) => setProjectName(event.target.value)}
-                  placeholder="e.g. Payments — SEPA transfer"
+                  placeholder="e.g. Payments, SEPA transfer"
                   maxLength={120}
                   disabled={upload.isPending}
                 />

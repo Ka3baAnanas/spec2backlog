@@ -7,12 +7,18 @@ import type {
   Section,
   StoryNode,
 } from "../../api/client";
-import { itemStatusMeta, roleMeta } from "../../lib/status";
+import { confidenceMeta, itemStatusMeta, roleMeta } from "../../lib/status";
 import { Button } from "../Button";
 import { Chip } from "../Chip";
 import { Copy, Link2, Refresh, X, XCircle, CheckCircle } from "../Icons";
 
 const PRIORITIES = ["must", "should", "could"];
+
+function priorityTone(priority: string): "red" | "amber" | "outline" {
+  if (priority === "must") return "red";
+  if (priority === "should") return "amber";
+  return "outline";
+}
 
 export function StoryDrawer({
   story,
@@ -85,6 +91,8 @@ export function StoryDrawer({
     };
   }, [story, asA, iWant, soThat, priority, criteria]);
 
+  const confidence = story ? confidenceMeta(story.confidence) : confidenceMeta(0);
+
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -129,6 +137,66 @@ export function StoryDrawer({
             </div>
 
             <div className="drawer__body">
+              <section className="drawer-section">
+                <h3>Story detail</h3>
+                <div className="story-detail">
+                  <p className="story-detail__statement">
+                    As a <b>{String(story.body.persona ?? story.body.as_a ?? "user")}</b>, I want{" "}
+                    {String(story.body.goal ?? story.body.i_want ?? "")}, so that{" "}
+                    {String(story.body.benefit ?? story.body.so_that ?? "")}.
+                  </p>
+                  {Boolean(story.body.description) && (
+                    <p className="story-detail__description">{String(story.body.description)}</p>
+                  )}
+                  <div className="story-detail__meta">
+                    <Chip tone={priorityTone(String(story.body.priority ?? "should"))}>
+                      {String(story.body.priority ?? "should")}
+                    </Chip>
+                    {Boolean(story.body.estimate) && (
+                      <Chip tone="outline">{String(story.body.estimate)}</Chip>
+                    )}
+                    <span title={`${Math.round(story.confidence * 100)}%`}>
+                      {confidence.label} confidence
+                    </span>
+                  </div>
+                  {Boolean(story.body.priority_reason) && (
+                    <p className="story-detail__note">
+                      <b>Priority reason:</b> {String(story.body.priority_reason)}
+                    </p>
+                  )}
+                  {Array.isArray(story.body.business_rules) && story.body.business_rules.length > 0 && (
+                    <div className="story-detail__list">
+                      <h4>Business rules</h4>
+                      <ul>
+                        {story.body.business_rules.map((rule) => (
+                          <li key={String(rule)}>{String(rule)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(story.body.dependencies) && story.body.dependencies.length > 0 && (
+                    <div className="story-detail__list">
+                      <h4>Dependencies</h4>
+                      <ul>
+                        {story.body.dependencies.map((dependency) => (
+                          <li key={String(dependency)}>{String(dependency)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(story.body.source_evidence) && story.body.source_evidence.length > 0 && (
+                    <div className="story-detail__list">
+                      <h4>Source evidence</h4>
+                      <ul>
+                        {story.body.source_evidence.map((evidence) => (
+                          <li key={String(evidence)}>{String(evidence)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </section>
+
               <section className="drawer-section">
                 <h3>Source section</h3>
                 {sourceSection ? (
@@ -241,7 +309,9 @@ export function StoryDrawer({
                     </label>
                     <label className="field">
                       <span>Confidence</span>
-                      <div className="confidence-readonly">{Math.round(story.confidence * 100)}%</div>
+                      <div className="confidence-readonly" title={`${Math.round(story.confidence * 100)}%`}>
+                        {confidence.label}
+                      </div>
                     </label>
                   </div>
                   <label className="field">
@@ -265,6 +335,41 @@ export function StoryDrawer({
                     />
                   </label>
                 </div>
+              </section>
+
+              <section className="drawer-section">
+                <h3>Test cases</h3>
+                {story.tests.length ? (
+                  <div className="story-tests">
+                    {story.tests.map((test) => {
+                      const testBody = test.body as Record<string, unknown>;
+                      const preconditions = Array.isArray(testBody.preconditions) ? testBody.preconditions : [];
+                      const steps = Array.isArray(testBody.steps) ? testBody.steps : [];
+                      return (
+                        <article key={test.id} className="story-test">
+                          <div className="story-test__head">
+                            <b>{test.key}</b>
+                            <span>{test.title}</span>
+                          </div>
+                          {preconditions.length > 0 && (
+                            <p><b>Preconditions:</b> {preconditions.map(String).join("; ")}</p>
+                          )}
+                          {steps.length > 0 && (
+                            <p><b>Steps:</b> {steps.map(String).join("; ")}</p>
+                          )}
+                          {Boolean(testBody.test_data) && (
+                            <p><b>Test data:</b> {String(testBody.test_data)}</p>
+                          )}
+                          {Boolean(testBody.expected) && (
+                            <p><b>Expected:</b> {String(testBody.expected)}</p>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="muted-small">No test cases for this story.</p>
+                )}
               </section>
 
               <section className="drawer-section">

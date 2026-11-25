@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   BacklogResponse,
   Coverage,
+  EpicNode,
   ItemStatus,
   Section,
   StoryNode,
 } from "../../api/client";
 import { api } from "../../api/client";
 import { errorMessage } from "../../lib/errors";
-import { itemStatusMeta } from "../../lib/status";
+import { confidenceMeta, itemStatusMeta } from "../../lib/status";
 import { Button } from "../Button";
 import { Chip } from "../Chip";
 import { useToast } from "../Toast";
@@ -31,6 +32,10 @@ function priorityTone(priority: string): "red" | "amber" | "outline" {
   return "outline";
 }
 
+function storiesOf(epic: EpicNode): StoryNode[] {
+  return epic.features?.length ? epic.features.flatMap((feature) => feature.stories) : epic.stories;
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -49,6 +54,7 @@ export function BacklogTab({
   coverage,
   sections,
   loading,
+  error,
   onRefresh,
 }: {
   projectId: string;
@@ -57,6 +63,7 @@ export function BacklogTab({
   coverage?: Coverage;
   sections: Section[];
   loading: boolean;
+  error?: unknown;
   onRefresh: () => void;
 }) {
   const reduced = useReducedMotion();
@@ -84,13 +91,26 @@ export function BacklogTab({
     [epics, selectedEpicId],
   );
 
-  const filteredStories = useMemo(() => {
+  const featureGroups = useMemo(() => {
     if (!selectedEpic) return [];
-    if (filter === "all") return selectedEpic.stories;
-    return selectedEpic.stories.filter((story) => story.status === filter);
+    const features = selectedEpic.features?.length
+      ? selectedEpic.features
+      : [{ id: `${selectedEpic.id}-all`, title: "", body: {}, stories: selectedEpic.stories }];
+    return features
+      .map((feature) => ({
+        id: feature.id,
+        title: feature.title,
+        summary: String((feature.body as Record<string, unknown>)?.summary ?? ""),
+        stories:
+          filter === "all"
+            ? feature.stories
+            : feature.stories.filter((story) => story.status === filter),
+      }))
+      .filter((feature) => feature.stories.length > 0);
   }, [selectedEpic, filter]);
 
-  const allStories = useMemo(() => epics.flatMap((epic) => epic.stories), [epics]);
+  const filteredCount = featureGroups.reduce((total, feature) => total + feature.stories.length, 0);
+  const allStories = useMemo(() => epics.flatMap((epic) => storiesOf(epic)), [epics]);
   const selectedStory = useMemo(
     () => allStories.find((story) => story.id === selectedStoryId) ?? null,
     [allStories, selectedStoryId],
@@ -178,7 +198,7 @@ export function BacklogTab({
   });
 
   const exportMutation = useMutation({
-    mutationFn: (format: "xlsx" | "csv") => api.exportFile(projectId, format),
+    mutationFn: (format: "xlsx" | "docx") => api.exportFile(projectId, format),
     onSuccess: (blob, format) => {
       const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       downloadBlob(blob, `${slug || "backlog"}.${format}`);
@@ -246,10 +266,10 @@ export function BacklogTab({
                   </button>
                   <button
                     type="button"
-                    onClick={() => exportMutation.mutate("csv")}
+                    onClick={() => exportMutation.mutate("docx")}
                     disabled={exportMutation.isPending}
                   >
-                    CSV <span>.csv</span>
+                    Word <span>.docx</span>
                   </button>
                   <button type="button" disabled>
                     Jira <span className="soon-badge">Soon</span>
@@ -274,10 +294,19 @@ export function BacklogTab({
         </div>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="backlog-empty card card--pad">
+          <ListChecks size={22} />
+          <strong>Could not load backlog</strong>
+          <p>{errorMessage(error)}</p>
+          <Button variant="secondary" size="sm" onClick={onRefresh}>
+            Retry
+          </Button>
+        </div>
+      ) : loading ? (
         <div className="backlog-empty card card--pad">
           <Sparkles size={20} />
-          <strong>Loading backlogâ€¦</strong>
+          <strong>Loading backlog...</strong>
         </div>
       ) : !epics.length ? (
         <div className="backlog-empty card card--pad">
@@ -294,10 +323,11 @@ export function BacklogTab({
             </div>
             <div className="backlog-epics__list">
               {epics.map((epic) => {
-                const approved = epic.stories.filter(
+                const epicStories = storiesOf(epic);
+                const approved = epicStories.filter(
                   (story) => story.status === "approved" || story.status === "edited",
                 ).length;
-                const percent = epic.stories.length ? Math.round((approved / epic.stories.length) * 100) : 0;
+                const percent = epicStories.length ? Math.round((approved / epicStories.length) * 100) : 0;
                 return (
                   <button
                     key={epic.id}
@@ -311,7 +341,7 @@ export function BacklogTab({
                       <i style={{ width: `${percent}%` }} />
                     </span>
                     <span className="backlog-epic__meta">
-                      {approved}/{epic.stories.length} approved Â· {epic.stories.length} stories
+                      {approved}/{epic.stories.length} approved · {epic.stories.length} stories
                     </span>
                   </button>
                 );
@@ -325,26 +355,42 @@ export function BacklogTab({
                 <span className="backlog-stories__key">{selectedEpic?.key}</span>
                 <h2>{selectedEpic?.title || "Epic"}</h2>
                 <p>
-                  {filteredStories.length} story{filteredStories.length === 1 ? "" : "ies"}
-                  {filter !== "all" ? ` Â· ${filter}` : ""}
+                  {String((selectedEpic?.body as Record<string, unknown>)?.summary ?? "") ||
+                    `${filteredCount} story${filteredCount === 1 ? "" : "ies"}`}
+                  {filter !== "all" ? ` · ${filter}` : ""}
                 </p>
               </div>
             </div>
 
-            {filteredStories.length === 0 ? (
+            {featureGroups.length === 0 ? (
               <div className="backlog-empty card card--pad">
                 <strong>No stories in this filter</strong>
                 <p>Switch the status filter to see the rest of the epic.</p>
               </div>
             ) : (
-              <div className="story-list">
-                {filteredStories.map((story) => (
-                  <StoryCard
-                    key={story.id}
-                    story={story}
-                    sourceSection={sections.find((section) => section.id === story.source_section_id)}
-                    onOpen={() => setSelectedStoryId(story.id)}
-                  />
+              <div className="backlog-features">
+                {featureGroups.map((feature) => (
+                  <section key={feature.id} className="backlog-feature">
+                    {feature.title && (
+                      <div className="backlog-feature__head">
+                        <div>
+                          <h3>{feature.title}</h3>
+                          {feature.summary && <p>{feature.summary}</p>}
+                        </div>
+                        <span>{feature.stories.length}</span>
+                      </div>
+                    )}
+                    <div className="story-list">
+                      {feature.stories.map((story) => (
+                        <StoryCard
+                          key={story.id}
+                          story={story}
+                          sourceSection={sections.find((section) => section.id === story.source_section_id)}
+                          onOpen={() => setSelectedStoryId(story.id)}
+                        />
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             )}
@@ -381,6 +427,9 @@ function StoryCard({
   const body = story.body;
   const criteria = Array.isArray(body.acceptance_criteria) ? body.acceptance_criteria : [];
   const priority = String(body.priority ?? "should");
+  const estimate = String(body.estimate ?? "");
+  const description = String(body.description ?? "");
+  const confidence = confidenceMeta(story.confidence);
   return (
     <motion.button
       type="button"
@@ -394,18 +443,23 @@ function StoryCard({
         <Chip tone={itemStatusMeta(story.status).tone}>{itemStatusMeta(story.status).label}</Chip>
       </div>
       <h3>{story.title}</h3>
+      {description && <p className="story-card__description">{description}</p>}
 
       <div className="story-card__meta">
         <Chip tone={priorityTone(priority)}>{priority}</Chip>
-        <span className="story-card__confidence">
+        {estimate && <Chip tone="outline">{estimate}</Chip>}
+        <span
+          className="story-card__confidence"
+          title={`${Math.round(story.confidence * 100)}% confidence`}
+        >
           <span className="mini-progress" aria-hidden="true">
             <i style={{ width: `${Math.round(story.confidence * 100)}%` }} />
           </span>
-          {Math.round(story.confidence * 100)}% confidence
+          {confidence.label} confidence
         </span>
         {sourceSection && (
           <span className="story-card__source">
-            Â§{sourceSection.number || "â€”"} {sourceSection.title}
+            §{sourceSection.number || "n/a"} {sourceSection.title}
           </span>
         )}
       </div>

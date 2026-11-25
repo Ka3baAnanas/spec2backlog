@@ -21,7 +21,7 @@ EXPECTED_COLUMNS: dict[str, set[str]] = {
                   "checklist", "created_at"},
     "sections": {
         "id", "project_id", "document_id", "parent_id", "number", "title", "text", "level",
-        "position", "is_leaf", "role", "lineage",
+        "position", "is_leaf", "role", "source", "extra_instructions", "lineage",
     },
     "links": {"id", "project_id", "source_id", "target_id", "kind", "score", "reason", "enabled"},
     "glossary_terms": {"id", "project_id", "term", "definition", "kind", "source_section_id"},
@@ -30,7 +30,9 @@ EXPECTED_COLUMNS: dict[str, set[str]] = {
         "id", "project_id", "key", "kind", "parent_item_id", "source_section_id",
         "source_sections", "title", "body", "status", "confidence", "questions",
     },
-    "questions": {"id", "project_id", "section_id", "text", "answer", "status", "created_at"},
+    "questions": {
+        "id", "project_id", "section_id", "text", "answer", "status", "priority", "created_at",
+    },
     "generation_traces": {
         "id", "project_id", "section_id", "prompt", "response_json", "links",
         "global_context_ids", "duration_ms", "attempts", "status", "error", "items_created",

@@ -7,6 +7,7 @@ const backend = process.env.BACKEND_URL || "http://localhost:8000";
 export default defineConfig({
   plugins: [react()],
   server: {
+    watch: { usePolling: true, interval: 500 },
     proxy: {
       "/api": backend,
     },

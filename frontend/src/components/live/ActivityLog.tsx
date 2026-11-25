@@ -38,7 +38,7 @@ function EventIcon({ type }: { type: RunEvent["type"] }) {
 
 function timeLabel(ts: string): string {
   const date = new Date(ts);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "n/a";
   return date.toLocaleTimeString("en-GB", {
     hour12: false,
     hour: "2-digit",

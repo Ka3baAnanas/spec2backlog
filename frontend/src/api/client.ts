@@ -11,6 +11,7 @@ export type Project = {
 };
 
 export type PreviewBlock = { kind: string; text: string; level: number };
+export type DocumentBlock = PreviewBlock;
 
 export type DocumentStats = {
   blocks?: number;
@@ -32,6 +33,8 @@ export type ProjectDocument = {
   stats: DocumentStats;
   warnings: string[];
   checklist: Checklist;
+  blocks: DocumentBlock[];
+  skipped: string[];
   created_at: string | null;
 };
 
@@ -48,6 +51,8 @@ export type Section = {
   position: number;
   is_leaf: boolean;
   role: SectionRole;
+  source: "document" | "manual";
+  extra_instructions: string;
   lineage: string[];
 };
 
@@ -70,14 +75,32 @@ export type ContextSection = {
   title: string;
   text: string;
   role: SectionRole;
+  source?: "document" | "manual";
+  extra_instructions?: string;
   lineage: string[];
+};
+
+export type GlossaryItem = { term: string; definition: string; kind: string };
+
+export type ContextData = {
+  section: ContextSection;
+  lineage: string[];
+  text: string;
+  links: ContextSection[];
+  linked_sections: ContextSection[];
+  global_context: ContextSection[];
+  glossary: GlossaryItem[];
+  dropped?: { linked_sections: string[]; global_context: string[] };
+  budget?: { max_tokens: number };
 };
 
 export type ContextPack = {
   section_id: string;
   section: ContextSection;
-  context: Record<string, unknown>;
+  context: ContextData;
   prompt: string;
+  instructions: string;
+  tokens: number;
   links: ContextSection[];
 };
 
@@ -87,8 +110,18 @@ export type StoryBody = {
   as_a?: string;
   i_want?: string;
   so_that?: string;
+  persona?: string;
+  goal?: string;
+  benefit?: string;
+  description?: string;
+  business_rules?: string[];
   acceptance_criteria?: string[];
   priority?: string;
+  priority_reason?: string;
+  estimate?: string;
+  dependencies?: string[];
+  source_evidence?: string[];
+  ambiguity_flag?: boolean;
   quality?: Record<string, boolean>;
   merged_from?: string[];
   section_id?: string;
@@ -107,7 +140,7 @@ export type BacklogItem = {
   id: string;
   project_id: string;
   key: string;
-  kind: "epic" | "story" | "test";
+  kind: "epic" | "feature" | "story" | "test";
   parent_item_id: string | null;
   source_section_id: string;
   source_sections: string[];
@@ -118,14 +151,17 @@ export type BacklogItem = {
   questions: string[];
 };
 
+export type FeatureBody = { summary?: string; [key: string]: unknown };
 export type StoryNode = BacklogItem & { body: StoryBody; tests: BacklogItem[] };
-export type EpicNode = BacklogItem & { stories: StoryNode[] };
+export type FeatureNode = BacklogItem & { body: FeatureBody; stories: StoryNode[] };
+export type EpicNode = BacklogItem & { body: FeatureBody; features: FeatureNode[]; stories: StoryNode[] };
 
 export type BacklogResponse = {
   project_id: string;
   epics: EpicNode[];
   stats: {
     epics: number;
+    features: number;
     stories: number;
     tests: number;
     by_status: Record<string, number>;
@@ -140,6 +176,7 @@ export type Question = {
   text: string;
   answer: string;
   status: "open" | "answered" | "ignored";
+  priority: "Blocking" | "Important" | "Minor";
   created_at: string | null;
 };
 
@@ -271,12 +308,33 @@ export const api = {
     fetch(`${B}/projects/${id}/document`).then((r) => json(r)),
   sections: (id: string): Promise<Section[]> =>
     fetch(`${B}/projects/${id}/sections`).then((r) => json(r)),
-  patchSection: (id: string, patch: { role?: SectionRole; title?: string }): Promise<Section> =>
+  patchSection: (
+    id: string,
+    patch: { role?: SectionRole; title?: string; extra_instructions?: string },
+  ): Promise<Section> =>
     fetch(`${B}/sections/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     }).then((r) => json(r)),
+
+  createManualContext: (projectId: string, payload: { title: string; text: string }): Promise<Section> =>
+    fetch(`${B}/projects/${projectId}/manual-context`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((r) => json(r)),
+  updateManualContext: (
+    sectionId: string,
+    payload: { title?: string; text?: string },
+  ): Promise<Section> =>
+    fetch(`${B}/sections/${sectionId}/manual-context`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((r) => json(r)),
+  deleteManualContext: (sectionId: string): Promise<{ deleted: boolean; id: string }> =>
+    fetch(`${B}/sections/${sectionId}/manual-context`, { method: "DELETE" }).then((r) => json(r)),
 
   links: (id: string): Promise<ProjectLink[]> =>
     fetch(`${B}/projects/${id}/links`).then((r) => json(r)),
@@ -341,9 +399,9 @@ export const api = {
   coverage: (id: string): Promise<Coverage> =>
     fetch(`${B}/projects/${id}/coverage`).then((r) => json(r)),
 
-  exportUrl: (id: string, format: "xlsx" | "csv" | "jira" | "azure" = "xlsx"): string =>
+  exportUrl: (id: string, format: "xlsx" | "docx" | "csv" | "jira" | "azure" = "xlsx"): string =>
     `${B}/projects/${id}/export?format=${format}`,
-  exportFile: async (id: string, format: "xlsx" | "csv"): Promise<Blob> => {
+  exportFile: async (id: string, format: "xlsx" | "docx" | "csv"): Promise<Blob> => {
     const response = await fetch(`${B}/projects/${id}/export?format=${format}`);
     if (!response.ok) throw new Error(await serverError(response));
     return response.blob();

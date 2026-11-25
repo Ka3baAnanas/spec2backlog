@@ -47,6 +47,14 @@ class Document(Base):
     checklist: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    @property
+    def blocks(self) -> list:
+        return (self.stats or {}).get("document_blocks", [])
+
+    @property
+    def skipped(self) -> list:
+        return (self.stats or {}).get("skipped_lines", [])
+
 
 class Section(Base):
     """A tree node. Leaves carry text; inner nodes are headings."""
@@ -63,6 +71,8 @@ class Section(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     is_leaf: Mapped[bool] = mapped_column(default=False)
     role: Mapped[str] = mapped_column(String(20), default=SectionRole.requirement.value)
+    source: Mapped[str] = mapped_column(String(20), default="document")
+    extra_instructions: Mapped[str] = mapped_column(Text, default="")
     lineage: Mapped[list] = mapped_column(JSON, default=list)
 
 
@@ -126,6 +136,7 @@ class Question(Base):
     text: Mapped[str] = mapped_column(Text)
     answer: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default=QuestionStatus.open.value)
+    priority: Mapped[str] = mapped_column(String(20), default="Important")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

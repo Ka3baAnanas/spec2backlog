@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   RUN_EVENT_TYPES,
   fetchAllEvents,
@@ -35,6 +45,8 @@ export function useRunStream(projectId: string | undefined) {
   }, []);
 
   useEffect(() => {
+    dispatch({ type: "reset" });
+    lastIdRef.current = 0;
     if (!projectId) {
       setConnection("idle");
       return;
@@ -158,5 +170,26 @@ export function useRunStream(projectId: string | undefined) {
     }
   }, [projectId]);
 
-  return { state, connection, replaying, replay, error };
+  return { state, connection, replaying, replay, error, projectId };
+}
+
+export type RunStreamValue = ReturnType<typeof useRunStream>;
+
+const RunStreamContext = createContext<RunStreamValue | null>(null);
+
+export function RunStreamProvider({
+  projectId,
+  children,
+}: {
+  projectId?: string;
+  children: ReactNode;
+}) {
+  const value = useRunStream(projectId);
+  return createElement(RunStreamContext.Provider, { value }, children);
+}
+
+export function useRunStreamContext(): RunStreamValue {
+  const value = useContext(RunStreamContext);
+  if (!value) throw new Error("useRunStreamContext must be used inside RunStreamProvider");
+  return value;
 }

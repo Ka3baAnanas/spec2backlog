@@ -33,9 +33,11 @@ def test_old_sqlite_schema_is_backed_up_and_recreated(tmp_path):
             "backlog_items", "questions", "generation_traces", "run_events", "review_events",
         }.issubset(set(inspector.get_table_names()))
         columns = {column["name"] for column in inspector.get_columns("sections")}
-        assert {"role", "lineage", "is_leaf"}.issubset(columns)
+        assert {"role", "source", "extra_instructions", "lineage", "is_leaf"}.issubset(columns)
         item_columns = {column["name"] for column in inspector.get_columns("backlog_items")}
         assert {"key", "confidence", "source_sections"}.issubset(item_columns)
+        question_columns = {column["name"] for column in inspector.get_columns("questions")}
+        assert {"text", "status", "priority"}.issubset(question_columns)
     finally:
         engine.dispose()
 

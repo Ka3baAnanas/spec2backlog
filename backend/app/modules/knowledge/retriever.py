@@ -47,6 +47,38 @@ def _candidates(sections):
     ]
 
 
+def _pair(link: dict) -> tuple[str, str]:
+    return tuple(sorted((link["source_id"], link["target_id"])))  # type: ignore[return-value]
+
+
+def prune_links(links: list[dict]) -> list[dict]:
+    """Keep the signal: top links per node, no weak or redundant lexical edges."""
+    min_score = settings.graph_min_link_score
+    max_per_node = settings.graph_max_links_per_node
+    better_pairs = {
+        _pair(link) for link in links if link["kind"] in ("similarity", "reference", "manual")
+    }
+    candidates = [
+        link for link in links
+        if link["score"] >= min_score
+        and (link["kind"] != "lexical" or _pair(link) not in better_pairs)
+    ]
+    candidates.sort(
+        key=lambda link: (-link["score"], link.get("kind", ""), link["source_id"], link["target_id"])
+    )
+
+    degree: Counter[str] = Counter()
+    kept: list[dict] = []
+    for link in candidates:
+        source, target = link["source_id"], link["target_id"]
+        if degree[source] >= max_per_node or degree[target] >= max_per_node:
+            continue
+        kept.append(link)
+        degree[source] += 1
+        degree[target] += 1
+    return kept
+
+
 def retrieve_links(project_id: str, sections: list, *, emit_events: bool = True) -> list[dict]:
     candidates = _candidates(sections)
     total = len(candidates)
@@ -67,12 +99,21 @@ def retrieve_links(project_id: str, sections: list, *, emit_events: bool = True)
     by_number = {section.number: section for section in candidates if section.number}
     found: dict[tuple[str, str], dict] = {}
 
+    priority = {"reference": 3, "manual": 3, "similarity": 2, "lexical": 1}
+
     def add(source, target, kind, score, reason):
         if source.id == target.id:
             return
         key = (source.id, target.id)
         current = found.get(key)
-        if current is None or score > current["score"]:
+        if (
+            current is None
+            or priority.get(kind, 0) > priority.get(current["kind"], 0)
+            or (
+                priority.get(kind, 0) == priority.get(current["kind"], 0)
+                and score > current["score"]
+            )
+        ):
             found[key] = {
                 "source_id": source.id,
                 "target_id": target.id,
@@ -111,13 +152,15 @@ def retrieve_links(project_id: str, sections: list, *, emit_events: bool = True)
                 add(section, target, LinkKind.lexical.value, score,
                     "shared keywords: " + ", ".join(shared))
 
-    links = list(found.values())
+    raw_links = list(found.values())
+    links = prune_links(raw_links)
     by_kind = dict(Counter(link["kind"] for link in links))
     linked_ids = {link["source_id"] for link in links} | {link["target_id"] for link in links}
     if emit_events:
         emit(project_id, "knowledge", "stage_end",
              f"Knowledge links built: {len(links)}",
-             {"sections": total, "links": len(links), "links_by_kind": by_kind,
+             {"sections": total, "links": len(links), "raw_links": len(raw_links),
+              "links_by_kind": by_kind,
               "sections_without_links": [s.id for s in candidates if s.id not in linked_ids]})
     return links
 

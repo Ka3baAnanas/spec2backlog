@@ -16,3 +16,4 @@ class PivotDocument:
     source: str = ""
     warnings: list[str] = field(default_factory=list)
     skipped_toc: int = 0
+    skipped: list[str] = field(default_factory=list)

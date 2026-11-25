@@ -5,7 +5,7 @@ import { Button } from "../Button";
 import { AlertTriangle, CheckCircle, Refresh, Sparkles } from "../Icons";
 
 function formatDuration(ms: number | null): string {
-  if (ms === null) return "—";
+  if (ms === null) return "n/a";
   if (ms < 1000) return `${Math.max(1, Math.round(ms))} ms`;
   return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
 }
@@ -48,7 +48,11 @@ export function GenerationView({
           <div>
             <div className="eyebrow">
               <span className="eyebrow__dot" aria-hidden="true" />
-              {generationDone ? "Generation complete" : "Generating backlog"}
+              {generationDone
+                ? stats.failed > 0
+                  ? "Generation needs attention"
+                  : "Generation complete"
+                : "Generating backlog"}
             </div>
             <div className="generation__percent">{percent}%</div>
           </div>
@@ -118,7 +122,7 @@ export function GenerationView({
               className={`generation__tile is-${leafState}`}
               initial={false}
               animate={{ opacity: 1 }}
-              title={`${section.number || "Section"} ${section.title} — ${STATE_LABEL[leafState]}`}
+              title={`${section.number || "Section"} ${section.title}: ${STATE_LABEL[leafState]}`}
             >
               <span className="generation__tile-number">{section.number || "§"}</span>
               <span className="generation__tile-dot" aria-hidden="true" />
@@ -135,7 +139,7 @@ export function GenerationView({
           </span>
           <div>
             <strong>{stats.failed} section(s) failed</strong>
-            <p>Successful sections were kept. Retry only the failed ones.</p>
+            <p>Completed sections are saved. Retry resumes only the failed ones.</p>
           </div>
           <Button size="sm" variant="secondary" icon={<Refresh size={14} />} loading={retrying} onClick={onRetry}>
             Retry failed

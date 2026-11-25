@@ -32,6 +32,7 @@ class LinkKind(str, enum.Enum):
 
 class ItemKind(str, enum.Enum):
     epic = "epic"
+    feature = "feature"
     story = "story"
     test = "test"
 

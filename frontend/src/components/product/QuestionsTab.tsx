@@ -8,6 +8,12 @@ import { Chip } from "../Chip";
 import { useToast } from "../Toast";
 import { Copy, CheckCircle } from "../Icons";
 
+function priorityTone(priority: string): "red" | "amber" | "outline" {
+  if (priority === "Blocking") return "red";
+  if (priority === "Important") return "amber";
+  return "outline";
+}
+
 function QuestionRow({
   question,
   onSave,
@@ -29,9 +35,12 @@ function QuestionRow({
         onChange={(event) => setAnswer(event.target.value)}
       />
       <div className="question-row__foot">
-        <Chip tone={question.status === "answered" ? "green" : question.status === "ignored" ? "outline" : "yellow"}>
-          {question.status}
-        </Chip>
+        <div className="question-row__chips">
+          <Chip tone={priorityTone(question.priority)}>{question.priority}</Chip>
+          <Chip tone={question.status === "answered" ? "green" : question.status === "ignored" ? "outline" : "yellow"}>
+            {question.status}
+          </Chip>
+        </div>
         <Button
           size="sm"
           variant="secondary"
@@ -91,7 +100,7 @@ export function QuestionsTab({
 
   const copyEmail = async () => {
     const lines: string[] = [
-      `Subject: Clarifications needed — ${projectName}`,
+      `Subject: Clarifications needed: ${projectName}`,
       "",
       "Hello,",
       "",
@@ -100,7 +109,7 @@ export function QuestionsTab({
     ];
     grouped.forEach(([sectionId, items], index) => {
       const section = sectionsById.get(sectionId);
-      lines.push(`${index + 1}. Section ${section?.number ?? "—"} — ${section?.title ?? "Untitled"}`);
+      lines.push(`${index + 1}. Section ${section?.number ?? "n/a"}: ${section?.title ?? "Untitled"}`);
       for (const item of items) {
         lines.push(`   • ${item.text}`);
         if (item.answer) lines.push(`     Answer: ${item.answer}`);
@@ -124,8 +133,8 @@ export function QuestionsTab({
             <span className="eyebrow__dot" aria-hidden="true" />
             Human gaps
           </div>
-          <h2>Questions for the client</h2>
-          <p>Generated questions are grouped by source section. Answer them, then copy the email.</p>
+          <h2>Open questions</h2>
+          <p>Ambiguous or missing information detected in the document, to clarify with the client.</p>
         </div>
         <Button
           variant="primary"
@@ -155,7 +164,7 @@ export function QuestionsTab({
               <section key={sectionId} className="question-group card card--pad">
                 <div className="question-group__head">
                   <div>
-                    <span className="question-group__num">Section {section?.number || "—"}</span>
+                    <span className="question-group__num">Section {section?.number || "n/a"}</span>
                     <h3>{section?.title || "Unknown section"}</h3>
                   </div>
                   <Chip tone="outline">{items.length} question{items.length === 1 ? "" : "s"}</Chip>

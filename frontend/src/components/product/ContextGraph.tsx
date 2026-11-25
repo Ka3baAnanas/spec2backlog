@@ -20,7 +20,15 @@ const HEIGHT = 440;
 type GraphNode = SimulationNodeDatum & { id: string; number: string; title: string; role: string };
 type GraphLink = SimulationLinkDatum<GraphNode> & { id: string; kind: string; score: number };
 type Transform = { x: number; y: number; k: number };
-type DragState = { x: number; y: number; tx: number; ty: number; sx: number; sy: number };
+type DragState = {
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  sx: number;
+  sy: number;
+  moved: boolean;
+};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -31,19 +39,21 @@ export function ContextGraph({
   links,
   selectedId,
   onSelect,
+  onClear,
 }: {
   sections: Section[];
   links: ProjectLink[];
   selectedId: string | null;
   onSelect: (section: Section) => void;
+  onClear: () => void;
 }) {
   const reduced = useReducedMotion();
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<Simulation<GraphNode, GraphLink> | null>(null);
   const positionsRef = useRef(new Map<string, { x: number; y: number }>());
   const dragRef = useRef<DragState | null>(null);
+  const animationRef = useRef<number | null>(null);
   const [, setTick] = useState(0);
-  const [hoverId, setHoverId] = useState<string | null>(null);
   const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, k: 1 });
 
   const visibleSections = useMemo(
@@ -127,7 +137,7 @@ export function ContextGraph({
     simulationNodes.map((node) => [node.id, { x: node.x ?? WIDTH / 2, y: node.y ?? HEIGHT / 2 }]),
   );
 
-  const focusId = hoverId ?? selectedId;
+  const focusId = selectedId;
   const neighbours = useMemo(() => {
     const set = new Set<string>();
     if (!focusId) return set;
@@ -140,7 +150,61 @@ export function ContextGraph({
 
   const byId = useMemo(() => new Map(visibleSections.map((section) => [section.id, section])), [visibleSections]);
 
+  useEffect(
+    () => () => {
+      if (animationRef.current !== null) window.cancelAnimationFrame(animationRef.current);
+    },
+    [],
+  );
+
+  const stopAnimation = () => {
+    if (animationRef.current !== null) {
+      window.cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+  };
+
+  const animateTo = (target: Transform, duration = 500) => {
+    stopAnimation();
+    if (reduced) {
+      setTransform(target);
+      return;
+    }
+    const start = transform;
+    const started = performance.now();
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - started) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setTransform({
+        x: start.x + (target.x - start.x) * eased,
+        y: start.y + (target.y - start.y) * eased,
+        k: start.k + (target.k - start.k) * eased,
+      });
+      if (progress < 1) animationRef.current = window.requestAnimationFrame(step);
+      else animationRef.current = null;
+    };
+    animationRef.current = window.requestAnimationFrame(step);
+  };
+
+  const resetView = () => {
+    onClear();
+    animateTo({ x: 0, y: 0, k: 1 });
+  };
+
+  const focusNode = (section: Section) => {
+    const position = positionById.get(section.id);
+    onSelect(section);
+    if (!position) return;
+    const k = Math.max(transform.k, 1.8);
+    animateTo({
+      k,
+      x: WIDTH / 2 - position.x * k,
+      y: HEIGHT / 2 - position.y * k,
+    });
+  };
+
   const zoomBy = (factor: number) => {
+    stopAnimation();
     setTransform((previous) => {
       const k = clamp(previous.k * factor, 0.45, 2.8);
       const worldX = (WIDTH / 2 - previous.x) / previous.k;
@@ -151,6 +215,7 @@ export function ContextGraph({
 
   const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
     event.preventDefault();
+    stopAnimation();
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
@@ -167,6 +232,7 @@ export function ContextGraph({
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     const target = event.target as Element | null;
     if (target?.closest("[data-graph-node]")) return;
+    stopAnimation();
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
@@ -177,6 +243,7 @@ export function ContextGraph({
       ty: transform.y,
       sx: WIDTH / Math.max(1, rect.width),
       sy: HEIGHT / Math.max(1, rect.height),
+      moved: false,
     };
     svg.setPointerCapture(event.pointerId);
   };
@@ -184,18 +251,23 @@ export function ContextGraph({
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
     setTransform((previous) => ({
       ...previous,
-      x: drag.tx + (event.clientX - drag.x) * drag.sx,
-      y: drag.ty + (event.clientY - drag.y) * drag.sy,
+      x: drag.tx + dx * drag.sx,
+      y: drag.ty + dy * drag.sy,
     }));
   };
 
   const endDrag = (event: PointerEvent<SVGSVGElement>) => {
+    const drag = dragRef.current;
     dragRef.current = null;
     if (svgRef.current?.hasPointerCapture(event.pointerId)) {
       svgRef.current.releasePointerCapture(event.pointerId);
     }
+    if (drag && !drag.moved) resetView();
   };
 
   const counts = useMemo(() => {
@@ -209,11 +281,13 @@ export function ContextGraph({
       <div className="context-graph__head">
         <div>
           <h2>Meaning graph</h2>
-          <p>Click a section to inspect its links and exact prompt.</p>
+          <p>Click a node to focus its links. Click empty space or Reset view to go back.</p>
         </div>
         <div className="context-graph__chips">
           <Chip tone="outline">{visibleSections.length} sections</Chip>
-          <Chip tone="outline">{enabledLinks.length} links</Chip>
+          <Chip tone="outline" title="Top links per node after filtering">
+            {enabledLinks.length} filtered links
+          </Chip>
         </div>
       </div>
 
@@ -248,10 +322,10 @@ export function ContextGraph({
                     key={link.id}
                     d={`M ${source.x} ${source.y} L ${target.x} ${target.y}`}
                     className={`live-graph-edge is-${link.kind} ${incident ? "is-hot" : "is-muted"}`}
-                    strokeWidth={1.2 + link.score * 2.4}
+                    strokeWidth={focusId && incident ? 1.3 + link.score * 3.2 : 1 + link.score * 1.4}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: incident ? 0.85 : 0.14 }}
-                    transition={{ duration: reduced ? 0 : 0.3 }}
+                    animate={{ opacity: focusId ? (incident ? 0.95 : 0.1) : 0.08 }}
+                    transition={{ duration: reduced ? 0 : 0.28 }}
                   />
                 );
               })}
@@ -273,13 +347,11 @@ export function ContextGraph({
                       .join(" ")}
                     transform={`translate(${position.x} ${position.y})`}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: related ? 1 : 0.25 }}
+                    animate={{ opacity: related ? 1 : 0.1 }}
                     transition={{ duration: reduced ? 0 : 0.28 }}
-                    onPointerEnter={() => setHoverId(section.id)}
-                    onPointerLeave={() => setHoverId((current) => (current === section.id ? null : current))}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onSelect(section);
+                      focusNode(section);
                     }}
                   >
                     <title>{`${section.number || "Section"} ${section.title}`}</title>
@@ -300,8 +372,8 @@ export function ContextGraph({
             <button type="button" onClick={() => zoomBy(0.85)} aria-label="Zoom out">
               <ZoomOut size={14} />
             </button>
-            <button type="button" onClick={() => setTransform({ x: 0, y: 0, k: 1 })} aria-label="Reset graph view">
-              1:1
+            <button type="button" onClick={resetView} aria-label="Reset graph view">
+              Reset view
             </button>
           </div>
         </div>

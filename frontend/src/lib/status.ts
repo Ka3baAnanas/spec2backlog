@@ -64,15 +64,15 @@ export type RoleMeta = Meta & { description: string };
 export function roleMeta(role: string): RoleMeta {
   switch (role) {
     case "requirement":
-      return { label: "Requirement", tone: "yellow", description: "Generated into backlog items" };
-       case "context":
-      return { label: "Context", tone: "blue", description: "Sent as global context" };
+      return { label: "Requirement", tone: "yellow", description: "turned into backlog items" };
+    case "context":
+      return { label: "Context", tone: "blue", description: "sent to the model as background" };
     case "glossary":
-      return { label: "Glossary", tone: "green", description: "Terms and actors" };
+      return { label: "Glossary", tone: "green", description: "terms and actors" };
     case "front_matter":
-      return { label: "Front matter", tone: "outline", description: "Never sent to the model" };
+      return { label: "Front matter", tone: "outline", description: "never sent" };
     case "ignored":
-      return { label: "Ignored", tone: "default", description: "Skipped by generation" };
+      return { label: "Ignored", tone: "default", description: "not used" };
     default:
       return { label: role, tone: "default", description: "" };
   }
@@ -100,3 +100,10 @@ export function isTerminalStatus(status: string): boolean {
   return ["generated", "in_review", "approved", "exported", "failed"].includes(status);
 }
 
+
+
+export function confidenceMeta(score: number): { label: "High" | "Medium" | "Low"; tone: ChipTone } {
+  if (score >= 0.8) return { label: "High", tone: "green" };
+  if (score >= 0.6) return { label: "Medium", tone: "yellow" };
+  return { label: "Low", tone: "outline" };
+}

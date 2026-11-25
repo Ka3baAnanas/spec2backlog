@@ -5,25 +5,25 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, type Section, type SectionRole } from "../api/client";
 import { Card } from "../components/Card";
 import { Chip } from "../components/Chip";
+import { History } from "../components/Icons";
+import { ActivityDrawer } from "../components/product/ActivityDrawer";
 import { AskTab } from "../components/product/AskTab";
 import { BacklogTab } from "../components/product/BacklogTab";
-import { HistoryTab } from "../components/product/HistoryTab";
 import { PipelineTab } from "../components/product/PipelineTab";
 import { QuestionsTab } from "../components/product/QuestionsTab";
 import { Skeleton, SkeletonLines } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
-import { useRunStream } from "../hooks/useRunStream";
+import { useRunStreamContext } from "../hooks/useRunStream";
 import { errorMessage } from "../lib/errors";
 import { softSpring } from "../lib/motion";
 import { projectStatusMeta } from "../lib/status";
 
-type TabId = "pipeline" | "backlog" | "questions" | "history" | "ask";
+type TabId = "pipeline" | "backlog" | "questions" | "ask";
 
 const TABS: { id: TabId; label: string; beta?: boolean }[] = [
   { id: "pipeline", label: "Pipeline" },
   { id: "backlog", label: "Backlog" },
-  { id: "questions", label: "Questions" },
-  { id: "history", label: "History" },
+  { id: "questions", label: "Open questions" },
   { id: "ask", label: "Ask", beta: true },
 ];
 
@@ -117,7 +117,7 @@ export default function Project() {
   const backlogQuery = useQuery({
     queryKey: ["backlog", id],
     queryFn: () => api.backlog(id),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && projectQuery.data?.status !== "generating",
   });
   const questionsQuery = useQuery({
     queryKey: ["questions", id],
@@ -130,13 +130,14 @@ export default function Project() {
     enabled: Boolean(id),
   });
 
-  const { state: runState, replaying, replay } = useRunStream(id);
+  const { state: runState } = useRunStreamContext();
 
   const project = projectQuery.data;
   const sections = sectionsQuery.data ?? [];
   const links = linksQuery.data ?? [];
 
-  const [pinnedStep, setPinnedStep] = useState<number | null>(null);
+  const [pinnedStep, setPinnedStep] = useState<number | null>(0);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const startedGeneration = useRef(false);
   const navigatedToBacklog = useRef(false);
@@ -174,6 +175,67 @@ export default function Project() {
     onError: (error) => toast({ tone: "error", title: "Could not update link", message: errorMessage(error) }),
   });
 
+  const saveManualContextMutation = useMutation({
+    mutationFn: ({
+      sectionId,
+      title,
+      text,
+    }: {
+      sectionId: string | null;
+      title: string;
+      text: string;
+    }) =>
+      sectionId
+        ? api.updateManualContext(sectionId, { title, text })
+        : api.createManualContext(id, { title, text }),
+    onSuccess: (updated, variables) => {
+      toast({
+        tone: "success",
+        title: variables.sectionId ? "Manual context updated" : "Manual context added",
+        message: `${updated.title} is included in the global context of every prompt.`,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["sections", id] });
+      void queryClient.invalidateQueries({ queryKey: ["context"] });
+      void queryClient.invalidateQueries({ queryKey: ["project", id] });
+      void queryClient.invalidateQueries({ queryKey: ["pipeline", id] });
+    },
+    onError: (error) =>
+      toast({ tone: "error", title: "Could not save manual context", message: errorMessage(error) }),
+  });
+
+  const saveInstructionsMutation = useMutation({
+    mutationFn: ({ sectionId, text }: { sectionId: string; text: string }) =>
+      api.patchSection(sectionId, { extra_instructions: text }),
+    onSuccess: () => {
+      toast({
+        tone: "success",
+        title: "Instructions saved",
+        message: "They will be appended to this section's prompt at generation.",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["sections", id] });
+      void queryClient.invalidateQueries({ queryKey: ["context"] });
+    },
+    onError: (error) =>
+      toast({ tone: "error", title: "Could not save instructions", message: errorMessage(error) }),
+  });
+
+  const deleteManualContextMutation = useMutation({
+    mutationFn: (section: Section) => api.deleteManualContext(section.id),
+    onSuccess: (_, section) => {
+      toast({
+        tone: "info",
+        title: "Manual context deleted",
+        message: `${section.title} was removed from the outline.`,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["sections", id] });
+      void queryClient.invalidateQueries({ queryKey: ["context"] });
+      void queryClient.invalidateQueries({ queryKey: ["project", id] });
+      void queryClient.invalidateQueries({ queryKey: ["pipeline", id] });
+    },
+    onError: (error) =>
+      toast({ tone: "error", title: "Could not delete manual context", message: errorMessage(error) }),
+  });
+
   const generateMutation = useMutation({
     mutationFn: async () => {
       await api.approveContext(id);
@@ -190,6 +252,9 @@ export default function Project() {
       });
       void queryClient.invalidateQueries({ queryKey: ["project", id] });
       void queryClient.invalidateQueries({ queryKey: ["pipeline", id] });
+      void queryClient.invalidateQueries({ queryKey: ["backlog", id] });
+      void queryClient.invalidateQueries({ queryKey: ["coverage", id] });
+      void queryClient.invalidateQueries({ queryKey: ["questions", id] });
     },
     onError: (error) =>
       toast({ tone: "error", title: "Could not start generation", message: errorMessage(error) }),
@@ -204,17 +269,16 @@ export default function Project() {
       toast({ tone: "info", title: "Retry started", message: "Only failed sections will run again." });
       void queryClient.invalidateQueries({ queryKey: ["pipeline", id] });
       void queryClient.invalidateQueries({ queryKey: ["project", id] });
+      void queryClient.invalidateQueries({ queryKey: ["backlog", id] });
+      void queryClient.invalidateQueries({ queryKey: ["coverage", id] });
+      void queryClient.invalidateQueries({ queryKey: ["questions", id] });
     },
     onError: (error) => toast({ tone: "error", title: "Could not retry", message: errorMessage(error) }),
   });
 
   useEffect(() => {
-    if (!sections.length) return;
     setSelectedSectionId((current) =>
-      current && sections.some((section) => section.id === current)
-        ? current
-        : sections.find((section) => section.role === "requirement" && section.text.trim())?.id ??
-          sections[0].id,
+      current && sections.some((section) => section.id === current) ? current : null,
     );
   }, [sections]);
 
@@ -243,6 +307,12 @@ export default function Project() {
     void queryClient.invalidateQueries({ queryKey: ["projects"] });
   }, [runState.stages.generation.status, failedSections, id, queryClient, setTab, toast]);
 
+  useEffect(() => {
+    if (runState.stages.generation.status === "active" && runState.lastEventId > 0) {
+      setPinnedStep(null);
+    }
+  }, [runState.lastEventId, runState.stages.generation.status]);
+
   const eventStep = useMemo(() => {
     if (
       runState.stages.generation.status !== "pending" ||
@@ -259,18 +329,26 @@ export default function Project() {
   const autoStep = Math.max(statusStep, eventStep);
   const activeStep = pinnedStep ?? autoStep;
 
+  const openBacklog = useCallback(async () => {
+    setPinnedStep(null);
+    setTab("backlog");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["backlog", id] }),
+      queryClient.invalidateQueries({ queryKey: ["coverage", id] }),
+      queryClient.invalidateQueries({ queryKey: ["questions", id] }),
+    ]);
+  }, [id, queryClient, setTab]);
+
   const handleStepSelect = (index: number) => {
     if (index >= 4) {
-      setTab("backlog");
-      setPinnedStep(null);
+      void openBacklog();
       return;
     }
     setPinnedStep(index);
   };
 
   const handleOpenBacklog = () => {
-    setPinnedStep(null);
-    setTab("backlog");
+    void openBacklog();
   };
 
   const refreshEverything = useCallback(() => {
@@ -332,7 +410,7 @@ export default function Project() {
           <div className="project-head__main">
             <div className="eyebrow">
               <span className="eyebrow__dot" aria-hidden="true" />
-              EY Cortex AI Â· Traceability workspace
+              EY Cortex AI · Traceability workspace
             </div>
             <h1>{project.name}</h1>
             <div className="project-head__meta">
@@ -344,12 +422,29 @@ export default function Project() {
               {project.context_approved && <span>Context approved</span>}
             </div>
           </div>
+          <button
+            type="button"
+            className="activity-button"
+            onClick={() => setActivityOpen(true)}
+            aria-haspopup="dialog"
+          >
+            <History size={14} />
+            <span>Activity</span>
+            <span className="activity-button__count">{runState.events.length}</span>
+          </button>
         </div>
 
         {project.status === "failed" && project.error && (
           <div className="project-error">
             <strong>Pipeline failed</strong>
             <p>{project.error}</p>
+          </div>
+        )}
+
+        {runState.demoMode && (
+          <div className="demo-banner" role="status">
+            <span className="demo-banner__dot" aria-hidden="true" />
+            Demo mode: generated without the AI model
           </div>
         )}
 
@@ -392,7 +487,6 @@ export default function Project() {
               sections={sections}
               links={links}
               activeStep={activeStep}
-              maxStep={autoStep}
               onStepSelect={handleStepSelect}
               selectedSectionId={selectedSectionId}
               onSelectSection={(section) => setSelectedSectionId(section.id)}
@@ -408,6 +502,21 @@ export default function Project() {
               retrying={retryMutation.isPending}
               onRetry={() => retryMutation.mutate()}
               onOpenBacklog={handleOpenBacklog}
+              onSaveManualContext={(sectionId, title, text) =>
+                saveManualContextMutation.mutate({ sectionId, title, text })
+              }
+              onDeleteManualContext={(section) => deleteManualContextMutation.mutate(section)}
+              manualSaving={saveManualContextMutation.isPending}
+              manualDeletingId={
+                deleteManualContextMutation.isPending
+                  ? deleteManualContextMutation.variables?.id ?? null
+                  : null
+              }
+              onClearSelection={() => setSelectedSectionId(null)}
+              onSaveExtraInstructions={(sectionId, text) =>
+                saveInstructionsMutation.mutate({ sectionId, text })
+              }
+              savingInstructions={saveInstructionsMutation.isPending}
             />
           )}
 
@@ -418,7 +527,8 @@ export default function Project() {
               backlog={backlogQuery.data}
               coverage={coverageQuery.data}
               sections={sections}
-              loading={backlogQuery.isLoading}
+              loading={backlogQuery.isLoading || backlogQuery.isFetching}
+              error={backlogQuery.error}
               onRefresh={refreshEverything}
             />
           )}
@@ -434,10 +544,6 @@ export default function Project() {
             />
           )}
 
-          {tab === "history" && (
-            <HistoryTab events={runState.events} replay={replay} replaying={replaying} />
-          )}
-
           {tab === "ask" && <AskTab projectId={id} sections={sections} />}
         </div>
 
@@ -447,6 +553,12 @@ export default function Project() {
           </p>
         )}
       </div>
+
+      <ActivityDrawer
+        open={activityOpen}
+        events={runState.events}
+        onClose={() => setActivityOpen(false)}
+      />
     </div>
   );
 }

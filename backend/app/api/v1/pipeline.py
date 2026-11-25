@@ -85,12 +85,36 @@ def retry_failed(project_id: str, db: Session = Depends(get_db)):
             GenerationTrace.project_id == project_id, GenerationTrace.status == "failed"
         )
     )
-    if not failed_sections:
-        raise HTTPException(409, "no failed section to retry")
+    completed_sections = db.scalar(
+        select(func.count(GenerationTrace.id)).where(
+            GenerationTrace.project_id == project_id,
+            GenerationTrace.status.in_(["ok", "retried"]),
+        )
+    )
+    if not failed_sections and not completed_sections:
+        raise HTTPException(409, "no generation result to retry")
     project.status = "generating"
     project.error = None
     db.commit()
-    return start_generation(project_id, only_failed=True)
+    return start_generation(project_id, resume=True)
+
+
+@router.post("/projects/{project_id}/pipeline/recover")
+def recover(project_id: str, db: Session = Depends(get_db)):
+    project = get_project(db, project_id)
+    if project.status != "generating":
+        raise HTTPException(409, "project is not generating")
+    run = get_run(project_id)
+    if run and run.get("status") == "running":
+        raise HTTPException(409, "generation is already running")
+    emit(
+        project_id,
+        "generation",
+        "warning",
+        "Generation was interrupted; resuming pending sections",
+        {"resume": True},
+    )
+    return start_generation(project_id, resume=True)
 
 
 @router.get("/projects/{project_id}/pipeline/status")

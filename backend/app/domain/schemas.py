@@ -22,6 +22,8 @@ class DocumentOut(BaseModel):
     stats: dict = Field(default_factory=dict)
     warnings: list = Field(default_factory=list)
     checklist: dict = Field(default_factory=dict)
+    blocks: list = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     model_config = {"from_attributes": True}
 
@@ -37,6 +39,8 @@ class SectionOut(BaseModel):
     position: int
     is_leaf: bool
     role: str
+    source: str = "document"
+    extra_instructions: str = ""
     lineage: list[str] = Field(default_factory=list)
     model_config = {"from_attributes": True}
 
@@ -44,6 +48,17 @@ class SectionOut(BaseModel):
 class SectionPatch(BaseModel):
     role: str | None = None
     title: str | None = None
+    extra_instructions: str | None = None
+
+
+class ManualContextCreate(BaseModel):
+    title: str
+    text: str
+
+
+class ManualContextPatch(BaseModel):
+    title: str | None = None
+    text: str | None = None
 
 
 class LinkOut(BaseModel):
@@ -78,6 +93,8 @@ class ContextOut(BaseModel):
     section: dict = Field(default_factory=dict)
     context: dict = Field(default_factory=dict)
     prompt: str = ""
+    instructions: str = ""
+    tokens: int = 0
     links: list = Field(default_factory=list)
 
 
@@ -116,6 +133,7 @@ class QuestionOut(BaseModel):
     text: str
     answer: str = ""
     status: str
+    priority: str = "Important"
     created_at: datetime | None = None
     model_config = {"from_attributes": True}
 

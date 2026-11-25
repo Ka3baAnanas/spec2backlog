@@ -1,5 +1,5 @@
 /* ============================================================
-   Spec2Backlog — EY design system tokens
+   Spec2Backlog: EY design system tokens
    ============================================================ */
 :root {
   color-scheme: light;
@@ -400,6 +400,39 @@ button:disabled {
   box-shadow: 0 0 0 3px rgba(255, 230, 0, 0.15);
 }
 
+.header-run-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 230, 0, 0.14);
+  border: 1px solid rgba(255, 230, 0, 0.38);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.header-run-badge:hover {
+  background: rgba(255, 230, 0, 0.22);
+}
+
+.header-run-badge__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ey-yellow);
+  box-shadow: 0 0 0 3px rgba(255, 230, 0, 0.18);
+  animation: run-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes run-pulse {
+  50% { opacity: 0.45; }
+}
+
 /* ============================================================
    Buttons
    ============================================================ */
@@ -471,6 +504,14 @@ a.btn:active {
 .btn--accent:hover:not(:disabled) {
   --btn-bg: #fff06b;
   --btn-border: #fff06b;
+  box-shadow: 0 8px 24px rgba(255, 230, 0, 0.5);
+}
+
+.btn--accent:disabled {
+  --btn-bg: var(--bg-subtle);
+  --btn-fg: var(--muted);
+  --btn-border: var(--border);
+  opacity: 1;
 }
 
 .btn--secondary {

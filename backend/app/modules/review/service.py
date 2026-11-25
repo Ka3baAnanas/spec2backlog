@@ -67,16 +67,17 @@ def approve_backlog(db: Session, project: Project, by: str = "ba") -> dict:
 
 
 def _pick_output(item: BacklogItem, output: dict) -> tuple[str, dict]:
+    stories = output.get("stories") or []
     if item.kind == "epic":
         epic = output.get("epic") or {}
         return epic.get("title") or item.title, {**(item.body or {}), "regenerated": True}
     if item.kind == "test":
-        tests = output.get("tests") or []
+        tests = [test for story in stories for test in (story.get("tests") or [])]
         if tests:
             return tests[0].get("title") or item.title, {**tests[0], "regenerated": True}
-    stories = output.get("stories") or []
     if stories:
-        return stories[0].get("title") or item.title, {**stories[0], "regenerated": True}
+        story = {key: value for key, value in stories[0].items() if key != "tests"}
+        return story.get("title") or item.title, {**story, "regenerated": True}
     return item.title, item.body or {}
 
 

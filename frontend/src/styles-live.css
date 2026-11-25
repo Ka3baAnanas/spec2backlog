@@ -681,7 +681,7 @@
 }
 
 .live-graph-edge.is-reference {
-  stroke: var(--amber);
+  stroke: var(--ey-yellow);
 }
 
 .live-graph-node circle {
@@ -762,6 +762,13 @@
   color: var(--text);
 }
 
+.live-graph__controls button:last-child {
+  min-width: auto;
+  padding: 0 8px;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
 .live-graph__legend {
   display: flex;
   flex-wrap: wrap;
@@ -789,7 +796,7 @@
 }
 
 .live-graph__legend i.is-reference {
-  background: var(--amber);
+  background: var(--ey-yellow);
 }
 
 /* Activity log ------------------------------------------------ */

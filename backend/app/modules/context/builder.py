@@ -17,6 +17,8 @@ def _section_dict(section: Section) -> dict:
         "title": section.title,
         "text": section.text,
         "role": section.role,
+        "source": section.source,
+        "extra_instructions": section.extra_instructions or "",
         "lineage": section.lineage or [],
     }
 
@@ -111,11 +113,14 @@ def render_prompt(context: dict) -> str:
         for item in context.get("linked_sections", context.get("links", []))
     ) or "(none)"
     template = load_template("user")
+    section = context.get("section") or {}
     return template.format(
         global_context=global_context,
         glossary=glossary,
         related_sections=related,
         section_path=" > ".join(context.get("lineage") or []),
+        section_number=section.get("number", ""),
+        section_title=section.get("title", ""),
         section_text=context.get("text", ""),
     )
 
@@ -123,8 +128,13 @@ def render_prompt(context: dict) -> str:
 def build_prompt(db: Session, section: Section, instruction: str | None = None) -> tuple[str, dict]:
     context = build_context(db, section)
     prompt = render_prompt(context)
-    if instruction:
-        prompt = f"{prompt}\n\nHUMAN INSTRUCTION:\n{instruction.strip()}"
+    instructions = [
+        (section.extra_instructions or "").strip(),
+        (instruction or "").strip(),
+    ]
+    instructions = [text for text in instructions if text]
+    if instructions:
+        prompt = f"{prompt}\n\nHUMAN INSTRUCTION:\n" + "\n\n".join(instructions)
     return prompt, context
 
 
@@ -144,11 +154,14 @@ def snapshot_context(db: Session, section: Section) -> ContextPack:
 
 def context_preview(db: Session, section: Section) -> dict:
     prompt, context = build_prompt(db, section)
+    instructions = load_template("system")
     return {
         "section_id": section.id,
         "section": context["section"],
         "context": context,
         "prompt": prompt,
+        "instructions": instructions,
+        "tokens": estimate_tokens(instructions) + estimate_tokens(prompt),
         "links": context["links"],
     }
 

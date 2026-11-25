@@ -25,14 +25,16 @@ excluded from the prompt.
 ## Quick start
 
 ```bash
-cp .env.example .env        # add GEMINI_API_KEY / GROQ_API_KEY (or leave empty = offline fake mode)
-make up                     # Postgres + Chroma + FastAPI (:8000/docs) + React (:5173)
+cp .env.example .env        # add OLLAMA_API_KEY and/or GEMINI_API_KEY; use LLM_PROVIDER=fake for offline demo
+make up                     # Postgres + Redis + Celery worker + Chroma + FastAPI (:8000/docs) + React (:5173)
 make test                   # end-to-end test on samples/exemple_specifications.docx
 ```
 
-Without API keys the app runs in **fake mode** (hash embeddings + deterministic stub LLM): the whole flow
-works offline, content is clearly marked as demo. `/api/v1/settings/providers` reports the active
-providers and whether they are fake.
+**Fake mode is explicit**: set `LLM_PROVIDER=fake` (and optionally `EMBEDDING_PROVIDER=fake`) for the
+offline deterministic stub flow; content is clearly marked as demo. A configured real provider that is
+unavailable never silently degrades to demo output: the run pauses, retries from saved traces, and only
+publishes a backlog once generation and consolidation succeed. `/api/v1/settings/providers` reports the
+active providers and whether they are fake.
 
 ## Docs
 

@@ -39,22 +39,33 @@ def get_backlog(project_id: str, db: Session = Depends(get_db)):
 
     epics = []
     for epic in [item for item in items if item.kind == "epic"]:
-        stories = []
-        for story in by_parent.get(epic.id, []):
-            if story.kind != "story":
+        features = []
+        flat_stories = []
+        for feature in by_parent.get(epic.id, []):
+            if feature.kind != "feature":
                 continue
-            story_dict = _item_dict(story)
-            story_dict["tests"] = [
-                _item_dict(test) for test in by_parent.get(story.id, [])
-                if test.kind == "test"
-            ]
-            stories.append(story_dict)
+            stories = []
+            for story in by_parent.get(feature.id, []):
+                if story.kind != "story":
+                    continue
+                story_dict = _item_dict(story)
+                story_dict["tests"] = [
+                    _item_dict(test) for test in by_parent.get(story.id, [])
+                    if test.kind == "test"
+                ]
+                stories.append(story_dict)
+                flat_stories.append(story_dict)
+            feature_dict = _item_dict(feature)
+            feature_dict["stories"] = stories
+            features.append(feature_dict)
         epic_dict = _item_dict(epic)
-        epic_dict["stories"] = stories
+        epic_dict["features"] = features
+        epic_dict["stories"] = flat_stories
         epics.append(epic_dict)
 
     counts = {
         "epics": sum(1 for item in items if item.kind == "epic"),
+        "features": sum(1 for item in items if item.kind == "feature"),
         "stories": sum(1 for item in items if item.kind == "story"),
         "tests": sum(1 for item in items if item.kind == "test"),
     }

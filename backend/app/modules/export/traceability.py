@@ -88,7 +88,7 @@ def backlog_rows(db: Session, project: Project) -> list[dict]:
         section.id: section
         for section in db.scalars(select(Section).where(Section.project_id == project.id))
     }
-    items = project_items(db, project.id)
+    items = [item for item in project_items(db, project.id) if item.status in ("approved", "edited")]
     by_id = {item.id: item for item in items}
     rows = []
     for item in items:
